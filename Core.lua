@@ -172,6 +172,16 @@ function ns.IsValidName(name)
     return not name:find("[%d%p%s%c]")
 end
 
+-- A realm part ("Navn-Realm") is optional; when there, it is letters, spaces, ' and - only,
+-- and short, so a shared entry always fits in one addon message.
+local MAX_REALM_BYTES = 30
+
+function ns.IsValidRealm(realm)
+    if realm == nil then return true end
+    if type(realm) ~= "string" or #realm > MAX_REALM_BYTES then return false end
+    return not realm:find("[^%a%s'%-\128-\255]")
+end
+
 -- The lookup key for a character: the name in small letters, plus "-realm" when the character
 -- is from another realm than yours. A name saved without a realm matches it on every realm.
 function ns.NameKey(name, realm)
@@ -263,10 +273,24 @@ function ns.AllEntries()
     return entries
 end
 
+-- The first `maxBytes` bytes of a UTF-8 text, without cutting a letter like æ in half: a
+-- letter of 2-4 bytes that doesn't fit whole is left out.
+local function CutToBytes(text, maxBytes)
+    if #text <= maxBytes then return text end
+    local cut = text:sub(1, maxBytes)
+    local leadPosition = cut:find("[\192-\255][\128-\191]*$")
+    if not leadPosition then return cut end
+    local lead = cut:byte(leadPosition)
+    local letterBytes = (lead >= 240 and 4) or (lead >= 224 and 3) or 2
+    if #cut - leadPosition + 1 < letterBytes then return cut:sub(1, leadPosition - 1) end
+    return cut
+end
+
 -- A reason as it is saved and shared, or nil when empty. "|" starts the game's color and
 -- link codes and tabs split addon messages, so both are taken out.
 function ns.CleanReason(reason)
-    local cleanReason = (reason or ""):gsub("[|\t]", ""):match("^%s*(.-)%s*$"):sub(1, MAX_REASON_BYTES)
+    local cleanReason = (reason or ""):gsub("[|\t]", "")
+    cleanReason = CutToBytes(cleanReason, MAX_REASON_BYTES):match("^%s*(.-)%s*$")
     if cleanReason == "" then return nil end
     return cleanReason
 end
@@ -274,7 +298,7 @@ end
 -- Adds a name to your own list. Returns the name as shown, or nil and why not.
 function ns.AddPersonal(fullName, reason)
     local name, realm = ns.SplitName(fullName or "")
-    if not ns.IsValidName(name) then return nil, ns.INVALID_NAME end
+    if not ns.IsValidName(name) or not ns.IsValidRealm(realm) then return nil, ns.INVALID_NAME end
     local shown = ns.DisplayName(name, realm)
     ns.db.personal[ns.NameKey(name, realm)] = {
         name = shown,
@@ -288,7 +312,7 @@ end
 -- Returns the removed name as shown, or nil and why not.
 function ns.RemovePersonal(key)
     local personal = ns.db.personal[key]
-    if not personal then return nil, "Navnet står ikke i din liste." end
+    if not personal then return nil, "Navnet står ikke på din liste." end
     ns.db.personal[key] = nil
     ns:Fire("KOS_LIST_CHANGED")
     return personal.name

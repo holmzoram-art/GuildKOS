@@ -1,19 +1,20 @@
--- The synced guild list: names guild members add in the addon. Every copy of the addon keeps
--- the whole list, and the copies keep each other up to date over hidden guild messages:
+-- The guild list: names guild members add in the addon. Every copy of the addon keeps the
+-- whole list, and the copies keep each other up to date over hidden guild messages:
 --   E1  one entry: name, changedAt, changedBy, removed (1 or 0), reason, addedBy, addedAt.
 --       Sent when someone adds or removes a name, and as part of a whole list (below).
 --   H1  a checksum of the sender's list, sent a little while after login
---   D1  a checksum; the sender's whole list follows as E1 messages, and then
---   D2  the end of the list
+--   D1  a whole list follows as E1 messages, and then
+--   D2  the end of that list
 --
 -- At login a copy says H1. A copy whose list differs waits a few seconds and sends its whole
--- list (D1, E1 ..., D2), unless another copy with the same list has done so since. The copy that said
--- H1 keeps what is newer, then sends the entries that answer lacked, so both sides end up
--- with everything. Only names that are newer than your own copy's are taken.
+-- list (D1, E1 ..., D2), unless someone has started sending a whole list since that H1.
+-- Every copy that hears a whole list to its end then sends only the entries that list lacked
+-- or had older, so each difference crosses the guild channel about once. Only entries newer
+-- than a copy's own are taken.
 --
 -- When two copies disagree about a name, the change made last wins: changedAt is the
 -- server's clock, the same for everyone. A removed name stays in the list, marked removed,
--- so a copy that was offline and still has it can't bring it back.
+-- for TOMBSTONE_KEEP_DAYS, so a copy that was offline and still has it can't bring it back.
 --
 -- Every guild member may change the list. Each entry remembers who added it, and the window
 -- shows that next to the name.
@@ -26,20 +27,35 @@ local ENTRY = "E1"
 local HELLO = "H1"
 local LIST_START = "D1"
 local LIST_END = "D2"
-local HELLO_DELAY = 20       -- seconds after login, so the game has loaded the guild first
-local ANSWER_DELAY_MIN = 2   -- seconds a copy whose list differs waits before answering an H1,
-local ANSWER_DELAY_MAX = 10  -- so not every copy answers at once
-local ANSWER_WAIT = 300      -- seconds after our H1 during which a list counts as its answer
-local HASH_START = 5381      -- the djb2 string hash, kept below 2^32 so it stays exact in Lua
+local HELLO_DELAY = 20          -- seconds after login, so the game has loaded the guild first
+-- A copy whose list differs waits a random time before answering an H1, so the first answer
+-- reaches the others before they answer too. The more members online, the wider the spread.
+local ANSWER_DELAY_MIN = 2         -- seconds
+local ANSWER_DELAY_PER_MEMBER = 0.5 -- seconds of spread for each guild member online
+local ANSWER_DELAY_MAX = 30        -- seconds
+local GAP_FILL_DELAY_MAX = 3    -- seconds; spreads out the copies sending what a list lacked
+local HELLO_RETRY_DELAY = 120   -- seconds; when a list started but never ended, ask once more
+local TOMBSTONE_KEEP_DAYS = 180 -- removed names older than this are forgotten
+local SECONDS_PER_DAY = 86400
+local FUTURE_TOLERANCE = 3600   -- seconds a change may lie ahead of the server clock
+local HASH_START = 5381         -- the djb2 string hash, kept below 2^32 so it stays exact in Lua
 local HASH_MODULO = 4294967296
 
-local lastListSent = { at = -math.huge, checksum = nil } -- the last whole list sent by anyone
 local helloSentAt = -math.huge
-local answer   -- while the answer to our H1 comes in: { sender, versions = { key -> entry } }
-local lastSync -- { at = GetServerTime(), from = "Ola" } when a whole list last came in
+local helloRound = 0              -- counts our H1s, so an old retry check knows it is old
+local hasSaidHello = false        -- said H1 this session (at login, or once the guild was known)
+local lastListStartedAt = -math.huge -- GetTime() of the last whole list started, by anyone
+local lastListEndedAt = -math.huge   -- GetTime() of the last whole list heard to its end
+local listBeingHeard  -- { sender, versions = { key -> entry } } while a whole list comes in
+local lastHeard = {}  -- key -> newest version another copy sent, to skip sending it again
+local lastSync        -- { at = GetServerTime(), from = "Ola" } when a whole list last came in
 
 local function MyFullName()
     return UnitName("player") .. "-" .. ns.OwnRealm()
+end
+
+local function RandomBetween(low, high)
+    return low + math.random() * (high - low)
 end
 
 local function IsNewer(incoming, current)
@@ -48,24 +64,35 @@ local function IsNewer(incoming, current)
     return incoming.changedBy > current.changedBy
 end
 
--- The same list gives the same checksum on every copy: keys are hashed in sorted order.
-local function ListChecksum(entries)
-    local keys = {}
-    for key in pairs(entries) do
-        table.insert(keys, key)
+local function IsForgottenTombstone(entry)
+    return entry.removed and entry.changedAt < GetServerTime() - TOMBSTONE_KEEP_DAYS * SECONDS_PER_DAY
+end
+
+local function ForgetOldTombstones(entries)
+    for key, entry in pairs(entries) do
+        if IsForgottenTombstone(entry) then entries[key] = nil end
     end
-    table.sort(keys)
+end
+
+-- One entry's hash. The list's checksum adds these up, so the order entries are stored in
+-- doesn't matter and every copy with the same list gets the same number.
+local function EntryHash(key, entry)
+    local text = table.concat({ key, tostring(entry.changedAt), entry.changedBy, entry.removed and "1" or "0" }, ":")
     local hash = HASH_START
-    for _, key in ipairs(keys) do
-        local entry = entries[key]
-        local text = key .. ":" .. tostring(entry.changedAt) .. ":" .. (entry.removed and "1" or "0") .. ";"
-        for index = 1, #text do
-            hash = (hash * 33 + text:byte(index)) % HASH_MODULO
-        end
+    for index = 1, #text do
+        hash = (hash * 33 + text:byte(index)) % HASH_MODULO
     end
-    -- tostring, not ("%x"):format: the game's Lua formats numbers above 2^31 differently
-    -- on different computers.
-    return tostring(hash)
+    return hash
+end
+
+-- tostring, not ("%x"):format: the game's Lua formats numbers above 2^31 differently on
+-- different computers.
+local function ListChecksum(entries)
+    local sum = 0
+    for key, entry in pairs(entries) do
+        sum = (sum + EntryHash(key, entry)) % HASH_MODULO
+    end
+    return tostring(sum)
 end
 
 local function EncodeEntry(entry)
@@ -81,12 +108,23 @@ local function EncodeEntry(entry)
     }
 end
 
+-- A server time from another copy, or nil when it is broken: a whole number of seconds, not
+-- too far in the future. (tonumber also reads "nan" and "inf", which would pin an entry.)
+local function ReadTime(text)
+    local value = tonumber(text)
+    if not value or value % 1 ~= 0 then return nil end
+    if value <= 0 or value > GetServerTime() + FUTURE_TOLERANCE then return nil end
+    return value
+end
+
 -- The key and entry an E1 message carries, or nil when it is broken.
 local function DecodeEntry(fields)
     local name, realm = ns.SplitName(fields[2] or "")
-    local changedAt = tonumber(fields[3])
+    local changedAt = ReadTime(fields[3])
     local changedBy = ns.Share.CleanText(fields[4])
-    if not ns.IsValidName(name) or not changedAt or changedBy == "" then return nil end
+    if not ns.IsValidName(name) or not ns.IsValidRealm(realm) or not changedAt or changedBy == "" then
+        return nil
+    end
     local addedBy = ns.Share.CleanText(fields[7])
     return ns.NameKey(name, realm), {
         name = ns.DisplayName(name, realm),
@@ -95,13 +133,13 @@ local function DecodeEntry(fields)
         removed = fields[5] == "1",
         reason = ns.CleanReason(fields[6]),
         addedBy = addedBy ~= "" and addedBy or nil,
-        addedAt = tonumber(fields[8]),
+        addedAt = ReadTime(fields[8]),
     }
 end
 
 local function Merge(key, incoming)
     local entries = ns.SyncedEntries()
-    if not entries or not IsNewer(incoming, entries[key]) then return end
+    if not entries or IsForgottenTombstone(incoming) or not IsNewer(incoming, entries[key]) then return end
     entries[key] = incoming
     ns:Fire("KOS_LIST_CHANGED")
 end
@@ -123,16 +161,16 @@ local function NextChangeTime(previous)
     return now
 end
 
-local function SaveMyChange(key, entry, send)
+local function SaveMyChange(key, entry)
     ns.SyncedEntries()[key] = entry
-    send(EncodeEntry(entry))
+    ns.Share.SendEdit(EncodeEntry(entry))
     ns:Fire("KOS_LIST_CHANGED")
 end
 
--- `send` is ns.Share.SendNow for one name, or ns.Share.SendBulk for an import.
-local function AddName(fullName, reason, send)
+-- Returns the name as shown, or nil and why not.
+function Sync.Add(fullName, reason)
     local name, realm = ns.SplitName(fullName or "")
-    if not ns.IsValidName(name) then return nil, ns.INVALID_NAME end
+    if not ns.IsValidName(name) or not ns.IsValidRealm(realm) then return nil, ns.INVALID_NAME end
     local problem = Sync.WhyCannotEdit()
     if problem then return nil, problem end
     local key = ns.NameKey(name, realm)
@@ -147,30 +185,26 @@ local function AddName(fullName, reason, send)
         changedAt = NextChangeTime(previous),
         removed = false,
     }
-    SaveMyChange(key, entry, send)
+    SaveMyChange(key, entry)
     return entry.name
 end
 
--- Both return the name as shown, or nil and why not.
-function Sync.Add(fullName, reason)
-    return AddName(fullName, reason, ns.Share.SendNow)
-end
-
+-- Returns the name as shown, or nil and why not.
 function Sync.Remove(key)
     local problem = Sync.WhyCannotEdit()
     if problem then return nil, problem end
     local current = ns.SyncedEntries()[key]
-    if not current or current.removed then return nil, "Navnet står ikke på guildlista i addonen." end
+    if not current or current.removed then return nil, "Navnet står ikke på guildlista." end
     SaveMyChange(key, {
         name = current.name,
         changedBy = MyFullName(),
         changedAt = NextChangeTime(current),
         removed = true,
-    }, ns.Share.SendNow)
+    })
     return current.name
 end
 
--- Adds every { fullName, reason } not already on the synced list (an import). Returns how
+-- Adds every { fullName, reason } not already on the guild list (an import). Returns how
 -- many were added, or nil and why not.
 function Sync.AddMany(items)
     local problem = Sync.WhyCannotEdit()
@@ -179,9 +213,7 @@ function Sync.AddMany(items)
     for _, item in ipairs(items) do
         local current = ns.SyncedEntries()[ns.KeyFromFullName(item.fullName)]
         local isListed = current and not current.removed
-        if not isListed and AddName(item.fullName, item.reason, ns.Share.SendBulk) then
-            addedCount = addedCount + 1
-        end
+        if not isListed and Sync.Add(item.fullName, item.reason) then addedCount = addedCount + 1 end
     end
     return addedCount
 end
@@ -190,81 +222,124 @@ end
 -- Comparing lists with the guild
 --------------------------------------------------------------------------------
 
--- Asks the guild for their lists. Returns false outside a guild (or before the game says which).
-function Sync.SayHello()
-    local entries = ns.SyncedEntries()
-    if not entries then return false end
-    helloSentAt = GetTime()
-    answer = nil
-    ns.Share.SendNow({ HELLO, ListChecksum(entries) })
-    return true
-end
-
 function Sync.StatusText()
     if not lastSync then return "Synkes når andre med addonen er pålogget." end
     return ("Sist synket med %s %s."):format(lastSync.from, ns.TimeAgo(lastSync.at))
 end
 
--- Answers an H1 heard at `helloHeardAt`, unless someone with the same list as ours has
--- answered since: the one who asked then has our list already.
-local function SendWholeList(helloHeardAt)
+local function SendWholeList()
     local entries = ns.SyncedEntries()
     if not entries then return end
-    local checksum = ListChecksum(entries)
-    if lastListSent.checksum == checksum and lastListSent.at >= helloHeardAt then return end
-    lastListSent = { at = GetTime(), checksum = checksum }
-    ns.Share.SendBulk({ LIST_START, checksum })
+    lastListStartedAt = GetTime()
+    local messages = { { LIST_START } }
     for _, entry in pairs(entries) do
-        ns.Share.SendBulk(EncodeEntry(entry))
+        table.insert(messages, EncodeEntry(entry))
     end
-    ns.Share.SendBulk({ LIST_END })
+    table.insert(messages, { LIST_END })
+    ns.Share.SendList(messages)
 end
 
--- After the answer to our H1: send the guild what that answer lacked or had older.
+-- Skips sending an entry when another copy has sent the same version (or a newer one) since.
+local function AlreadySentBySomeone(key, entry)
+    return function()
+        return lastHeard[key] ~= nil and not IsNewer(entry, lastHeard[key])
+    end
+end
+
+-- After hearing a whole list: send what it lacked or had older.
 local function SendWhatTheyLack(theirVersions)
     local entries = ns.SyncedEntries()
     if not entries then return end
     for key, entry in pairs(entries) do
         local theirs = theirVersions[key]
-        if not theirs or IsNewer(entry, theirs) then ns.Share.SendBulk(EncodeEntry(entry)) end
+        if not theirs or IsNewer(entry, theirs) then
+            ns.Share.SendEdit(EncodeEntry(entry), AlreadySentBySomeone(key, entry))
+        end
     end
+end
+
+-- A list that started after our H1 but never reached its end (the sender logged out or
+-- reloaded): ask once more.
+local function AskAgainIfUnfinished(round)
+    if round ~= helloRound then return end
+    local hasListStarted = lastListStartedAt >= helloSentAt
+    local hasListEnded = lastListEndedAt >= helloSentAt
+    if hasListStarted and not hasListEnded then Sync.SayHello(true) end
+end
+
+-- Asks the guild for their lists. Returns false outside a guild (or before the game says which).
+function Sync.SayHello(isRetry)
+    local entries = ns.SyncedEntries()
+    if not entries then return false end
+    ForgetOldTombstones(entries)
+    helloSentAt = GetTime()
+    helloRound = helloRound + 1
+    hasSaidHello = true
+    ns.Share.SendNow({ HELLO, ListChecksum(entries) })
+    if not isRetry then
+        local round = helloRound
+        C_Timer.After(HELLO_RETRY_DELAY, function() AskAgainIfUnfinished(round) end)
+    end
+    return true
+end
+
+local function SayHelloOnce()
+    if not hasSaidHello then Sync.SayHello() end
+end
+
+-- How many guild members are online. GetNumGuildMembers gives (total, online) on older clients
+-- and (total, online at max level, online) on newer ones, so the larger of the two is used.
+local function OnlineMemberCount()
+    local _, second, third = GetNumGuildMembers()
+    return math.max(tonumber(ns.Plain(second)) or 0, tonumber(ns.Plain(third)) or 0)
+end
+
+local function AnswerDelay()
+    local latest = math.min(ANSWER_DELAY_MIN + ANSWER_DELAY_PER_MEMBER * OnlineMemberCount(), ANSWER_DELAY_MAX)
+    return RandomBetween(ANSWER_DELAY_MIN, latest)
 end
 
 ns.Share.OnMessage(HELLO, function(fields)
     local entries = ns.SyncedEntries()
     if not entries or fields[2] == ListChecksum(entries) then return end
     local helloHeardAt = GetTime()
-    C_Timer.After(math.random(ANSWER_DELAY_MIN, ANSWER_DELAY_MAX), function()
-        SendWholeList(helloHeardAt)
+    C_Timer.After(AnswerDelay(), function()
+        -- Someone already started a whole list: we send what it lacks when it ends.
+        if lastListStartedAt >= helloHeardAt then return end
+        SendWholeList()
     end)
 end)
 
-ns.Share.OnMessage(LIST_START, function(fields, sender)
-    lastListSent = { at = GetTime(), checksum = fields[2] }
-    if answer or GetTime() - helloSentAt > ANSWER_WAIT then return end
-    answer = { sender = sender, versions = {} }
+ns.Share.OnMessage(LIST_START, function(_, sender)
+    lastListStartedAt = GetTime()
+    listBeingHeard = { sender = sender, versions = {} }
 end)
 
 ns.Share.OnMessage(ENTRY, function(fields, sender)
     local key, incoming = DecodeEntry(fields)
     if not key then return end
-    if answer and answer.sender == sender then answer.versions[key] = incoming end
+    if listBeingHeard and listBeingHeard.sender == sender then listBeingHeard.versions[key] = incoming end
+    if not lastHeard[key] or IsNewer(incoming, lastHeard[key]) then lastHeard[key] = incoming end
     Merge(key, incoming)
 end)
 
 ns.Share.OnMessage(LIST_END, function(_, sender)
+    if not (listBeingHeard and listBeingHeard.sender == sender) then return end
+    local theirVersions = listBeingHeard.versions
+    listBeingHeard = nil
+    lastListEndedAt = GetTime()
     lastSync = { at = GetServerTime(), from = Ambiguate(sender, "guild") }
     ns:Fire("KOS_SYNCED")
-    if not (answer and answer.sender == sender) then return end
-    local theirVersions = answer.versions
-    answer = nil
-    helloSentAt = -math.huge
-    SendWhatTheyLack(theirVersions)
+    C_Timer.After(RandomBetween(0, GAP_FILL_DELAY_MAX), function() SendWhatTheyLack(theirVersions) end)
 end)
 
+-- At login, and when the game first says which guild you are in (it can take a while).
 ns:On("PLAYER_LOGIN", function()
-    C_Timer.After(HELLO_DELAY, function()
-        -- The game can still be loading guild data; one more try a little later.
-        if not Sync.SayHello() then C_Timer.After(HELLO_DELAY, Sync.SayHello) end
-    end)
+    -- Asks the game for the guild roster, so OnlineMemberCount knows who is online.
+    if C_GuildInfo and C_GuildInfo.GuildRoster then C_GuildInfo.GuildRoster() end
+    C_Timer.After(HELLO_DELAY, SayHelloOnce)
+end)
+
+ns:On("PLAYER_GUILD_UPDATE", function()
+    C_Timer.After(HELLO_DELAY, SayHelloOnce)
 end)

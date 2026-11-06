@@ -65,12 +65,9 @@ local function CreateFlash()
 
     local glow = frame:CreateTexture(nil, "BACKGROUND")
     glow:SetAllPoints()
-    if glow:SetTexture(FLASH_TEXTURE) == false then
-        glow:SetColorTexture(1, 0, 0, 0.25)
-    else
-        glow:SetVertexColor(1, 0.1, 0.1)
-        glow:SetBlendMode("ADD")
-    end
+    glow:SetTexture(FLASH_TEXTURE)
+    glow:SetVertexColor(1, 0.1, 0.1)
+    glow:SetBlendMode("ADD")
 
     -- One loop is one pulse (fade in, fade out); it stops after FLASH_PULSES of them.
     local pulse = frame:CreateAnimationGroup()
@@ -99,7 +96,10 @@ local function CreateBanner()
     local frame = CreateFrame("Frame", nil, UIParent)
     frame:SetSize(900, 90)
     frame:SetPoint("TOP", UIParent, "TOP", 0, BANNER_TOP)
-    frame:SetFrameStrata("HIGH")
+    -- Above the /kos window (DIALOG), so "Test" shows the text in front of it. The banner
+    -- takes no mouse clicks, so it never gets in the way.
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(100)
     frame:Hide()
 
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")

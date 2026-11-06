@@ -4,27 +4,36 @@ En addon for WoW Forever. Du legger inn navn, og når en av dem er i nærheten f
 
 - en lyd (Raid Warning som standard, spilles på Master-kanalen)
 - rødt blink rundt skjermkanten
-- stor tekst midt på skjermen og en linje i chat
-- et lite «KOS i nærheten»-vindu som viser hvem som er rundt deg nå (du kan dra det dit du vil ha det)
+- stor tekst øverst på skjermen og en linje i chat
+- et lite «KOS i nærheten»-vindu som viser hvem som er sett det siste minuttet. Trykk «Test» i
+  `/kos`-vinduet for å få det fram, og dra det dit du vil ha det.
 - blinkende ikon på oppgavelinja hvis spillet ligger i bakgrunnen
+
+Første gang addonen lastes, står «Nektarion» på lista di med grunnen «Test», så du kan prøve varslene
+med en gang. Fjern navnet med X-en når du er ferdig; det kommer ikke tilbake.
+
+Hold musa over et navn i lista for å se alt om det: grunn, drap, hvor og når det sist ble sett, og
+hvem som la det til.
 
 ## Guildlista
 
 Guildlista er felles for alle i guilden som har addonen. Skriv navnet (og gjerne en grunn) i
-`/kos`-vinduet og trykk «Legg til i guildlista». Alle med addonen har hele lista lagret hos seg, og
+`/kos`-vinduet og trykk «Legg til på guildlista». Alle med addonen har hele lista lagret hos seg, og
 addonene holder hverandre oppdatert:
 
 - Et nytt eller fjernet navn sendes med en gang til alle som er pålogget.
 - Når noen logger på, sammenligner addonen lista med de andre og henter det som mangler. Den som
   var borte en uke, får altså alt som skjedde i mellomtiden, så lenge minst én annen med addonen er
   pålogget.
-- Det er ingen grense på hvor mange navn lista kan ha.
+- Det er ingen grense for hvor mange navn lista kan ha.
 - Fjerner noen et navn, blir det borte hos alle. Det kommer ikke tilbake fra noen med en gammel liste.
 - Alle i guilden kan legge til og fjerne navn. Lista viser hvem som la til hvert navn.
+- X-en ved et guildnavn fjerner det for hele guilden. Addonen spør først.
 
 ## Min liste
 
-Din egen liste er bare din. Den gjelder alle karakterene dine på kontoen, og blir aldri delt.
+Din egen liste gjelder alle karakterene dine på kontoen, og addonen sender den aldri til andre. Den er
+likevel med når du bruker «Del lista».
 
 ## Del lista som tekst
 
@@ -76,7 +85,7 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | Kommando | Hva den gjør |
 |---|---|
 | `/kos` | åpner eller lukker vinduet |
-| `/kos add Navn [grunn]` | legger navnet til i din liste |
+| `/kos add Navn [grunn]` | legger navnet til på din liste |
 | `/kos remove Navn` | fjerner navnet fra din liste |
 | `/kos guild add Navn [grunn]` | legger navnet til på guildlista |
 | `/kos guild remove Navn` | fjerner navnet fra guildlista |

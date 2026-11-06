@@ -14,15 +14,17 @@ local WINDOW_WIDTH = 440
 local WINDOW_HEIGHT = 420
 local EDGE = 22
 local CONTENT_WIDTH = WINDOW_WIDTH - 2 * EDGE
-local TEXT_TOP = -82
+local HELP_TOP = -46
 local TEXT_BOTTOM = 52 -- room for the buttons under the text box
 local TEXT_INSET = 8
 local SCROLLBAR_SPACE = 24
 -- What may stand between a name and its reason: "-", ":" or "–" (an en dash, 3 bytes in UTF-8).
 local REASON_SEPARATORS = { "^%-+%s*", "^:%s*", "^\226\128\147%s*" }
 
-local HELP_TEXT = "Eksport: teksten er markert, trykk Ctrl+C og lim den inn der du vil, for eksempel på Discord.\n"
-    .. "Import: lim inn en liste med Ctrl+V, ett navn per linje, og trykk en av import-knappene."
+local HELP_TEXT = "Eksport: Teksten er allerede markert. Trykk Ctrl+C og lim den inn der du vil, "
+    .. "for eksempel på Discord.\n"
+    .. "Import: Lim inn en liste med Ctrl+V, ett navn per linje, og trykk «Til guildlista» "
+    .. "eller «Til min liste»."
 
 local window
 
@@ -50,7 +52,9 @@ end
 local function ReadLine(line, items)
     local trimmed = line:match("^%s*(.-)%s*$")
     if trimmed == "" or trimmed:sub(1, 1) == "#" then return end
-    local fullName, rest = trimmed:match("^(%S+)%s*(.-)$")
+    -- The name ends at a space or a ":", so "Navn: grunn" works as well as "Navn - grunn".
+    local fullName, rest = trimmed:match("^([^%s:]+)%s*(.-)$")
+    if not fullName then return end
     table.insert(items, { fullName = fullName, reason = StripSeparator(rest) })
 end
 
@@ -83,19 +87,22 @@ local function Import(addItems, listName)
         ns:Print(problem)
         return
     end
-    ns:Print(("%d av %d navn er lagt til i %s. De andre sto der fra før eller var ugyldige.")
-        :format(addedCount, #items, listName))
+    local message = ("%d av %d navn er lagt til på %s."):format(addedCount, #items, listName)
+    if addedCount < #items then message = message .. " Resten sto der fra før eller var ugyldige." end
+    ns:Print(message)
 end
 
+-- The cursor goes to the top first, so a long list opens at its first names.
 local function ShowExport()
     window.editBox:SetText(ExportText())
+    window.editBox:SetCursorPosition(0)
     window.editBox:SetFocus()
     window.editBox:HighlightText()
 end
 
-local function CreateTextArea(frame)
+local function CreateTextArea(frame, help)
     local textBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    textBox:SetPoint("TOPLEFT", EDGE, TEXT_TOP)
+    textBox:SetPoint("TOPLEFT", help, "BOTTOMLEFT", 0, -8)
     textBox:SetPoint("BOTTOMRIGHT", -EDGE, TEXT_BOTTOM)
     textBox:SetBackdrop(ns.UI.LIST_BACKDROP)
     textBox:SetBackdropColor(0, 0, 0, 0.6)
@@ -108,6 +115,9 @@ local function CreateTextArea(frame)
     local editBox = CreateFrame("EditBox", nil, scroll)
     editBox:SetMultiLine(true)
     editBox:SetAutoFocus(false)
+    -- No length limit: an edit box made in code may otherwise stop at 255 bytes.
+    editBox:SetMaxLetters(0)
+    if editBox.SetMaxBytes then editBox:SetMaxBytes(0) end
     editBox:SetFontObject(ChatFontNormal)
     editBox:SetWidth(CONTENT_WIDTH - 2 * TEXT_INSET - SCROLLBAR_SPACE)
     editBox:SetScript("OnEscapePressed", editBox.ClearFocus)
@@ -155,16 +165,18 @@ end
 local function CreateShareWindow()
     local frame = ns.UI.CreateWindow(WINDOW_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, "Del KOS-lista")
     local help = ns.UI.CreateText(frame, "GameFontHighlightSmall", HELP_TEXT)
-    help:SetPoint("TOPLEFT", EDGE, -46)
+    help:SetPoint("TOPLEFT", EDGE, HELP_TOP)
     help:SetWidth(CONTENT_WIDTH)
     help:SetJustifyH("LEFT")
-    CreateTextArea(frame)
+    CreateTextArea(frame, help)
     CreateButtons(frame)
     frame:SetScript("OnShow", ShowExport)
     return frame
 end
 
-function ExportImport.Toggle()
+-- Opens the window, in front of the /kos window. Escape or the X closes it.
+function ExportImport.Show()
     window = window or CreateShareWindow()
-    window:SetShown(not window:IsShown())
+    window:Show()
+    window:Raise()
 end

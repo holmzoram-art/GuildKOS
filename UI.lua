@@ -20,7 +20,8 @@ local LIST_WIDTH = CONTENT_WIDTH - 2 * LIST_INSET - SCROLLBAR_SPACE
 local ROW_HEIGHT = 32
 local OPTIONS_TOP = LIST_TOP - LIST_HEIGHT - 14
 local CHECKBOX_SPACING = 24
-local ALERT_PAUSES = { 30, 60, 120, 300 } -- seconds, the choices behind the "Pause" button
+local ALERT_PAUSES = { 30, 60, 120, 300 } -- seconds, the choices behind the "Nytt varsel" button
+local REMOVE_POPUP = "GUILDKOS_REMOVE_FROM_GUILD_LIST"
 
 local GUILD_TAG = "|cff40ff40Guild|r"
 local PERSONAL_TAG = "|cff66b3ffMin|r"
@@ -43,11 +44,11 @@ local CHECKBOXES = {
     { key = "playSound", label = "Spill lyd" },
     { key = "flashScreen", label = "Blink rundt skjermkanten" },
     { key = "showBanner", label = "Stor tekst på skjermen" },
-    { key = "showNearbyWindow", label = "Vis «i nærheten»-vindu" },
+    { key = "showNearbyWindow", label = "Vis «KOS i nærheten»-vinduet" },
     { key = "shareSightings", label = "Si fra til guilden",
         tooltip = "Når du ser noen fra guildlista, får guildmedlemmer med addonen beskjed om hvor. "
             .. "Din egen liste deles aldri." },
-    { key = "showGuildReports", label = "Vis guildens funn i chat" },
+    { key = "showGuildReports", label = "Vis guildens varsler i chat" },
     { key = "announceKills", label = "Kunngjør drap i guildchat",
         tooltip = "Når du eller gruppa di dreper noen fra guildlista, skriver addonen det i guildchat, "
             .. "med hvor mange ganger de er tatt." },
@@ -96,6 +97,9 @@ function UI.CreateWindow(globalName, width, height, titleText)
     frame:SetBackdrop(UI.WINDOW_BACKDROP)
     frame:SetFrameStrata("DIALOG")
     frame:SetClampedToScreen(true)
+    -- Two windows share the DIALOG layer; a top-level one comes in front of the other when
+    -- shown or clicked, so the other's buttons don't show (and catch clicks) through it.
+    frame:SetToplevel(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -160,7 +164,7 @@ local function AddFromInputs(add, doneText)
 end
 
 local function AddToPersonalList()
-    AddFromInputs(ns.AddPersonal, "%s er lagt til i din liste.")
+    AddFromInputs(ns.AddPersonal, "%s er lagt til på din liste.")
 end
 
 local function AddToGuildList()
@@ -173,18 +177,31 @@ local function CanRemove(entry)
     return entry.inPersonalList or (entry.inGuildList and ns.Sync.WhyCannotEdit() == nil)
 end
 
-local function RemoveEntry(entry)
-    local shown, problem
-    if entry.inPersonalList then
-        shown, problem = ns.RemovePersonal(entry.key)
-    else
-        shown, problem = ns.Sync.Remove(entry.key)
-    end
+local function ReportRemoval(shown, problem)
     if not shown then
         ns:Print(problem)
         return
     end
     ns:Print(("%s er fjernet."):format(shown))
+end
+
+-- Taking a name off the guild list takes it off for everyone, so it is asked first.
+StaticPopupDialogs[REMOVE_POPUP] = {
+    text = "Fjerne %s fra guildlista? Navnet blir borte for alle i guilden.",
+    button1 = "Fjern",
+    button2 = "Avbryt",
+    OnAccept = function(_, key) ReportRemoval(ns.Sync.Remove(key)) end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
+local function RemoveEntry(entry)
+    if entry.inPersonalList then
+        ReportRemoval(ns.RemovePersonal(entry.key))
+        return
+    end
+    StaticPopup_Show(REMOVE_POPUP, entry.name, nil, entry.key)
 end
 
 local function RemoveTooltipText(entry)
@@ -232,13 +249,26 @@ local function AddPart(parts, part)
     if part then table.insert(parts, part) end
 end
 
--- The grey line under a name: reason, kills, last seen and who added it, those it has.
-local function DetailText(entry)
+-- Everything known about a name, one line each, for the row's tooltip.
+local function DetailLines(entry)
+    local lines = {}
+    AddPart(lines, entry.reason and ("Grunn: " .. entry.reason))
+    AddPart(lines, KillText(entry))
+    AddPart(lines, SeenText(entry))
+    AddPart(lines, OriginText(entry))
+    if #lines == 0 then return "Ikke sett ennå" end
+    return table.concat(lines, "\n")
+end
+
+-- The grey line under a name, short enough to fit the row: "Gikk alliance · drept 3x ·
+-- sett for 5 min siden". The tooltip has the rest.
+local function SummaryText(entry)
     local parts = {}
     AddPart(parts, entry.reason)
-    AddPart(parts, KillText(entry))
-    AddPart(parts, SeenText(entry))
-    AddPart(parts, OriginText(entry))
+    local record = ns.db.kills[entry.key]
+    AddPart(parts, record and ("drept %dx"):format(record.count))
+    local sighting = ns.db.lastSeen[entry.key]
+    AddPart(parts, sighting and ("sett " .. ns.TimeAgo(sighting.at)))
     if #parts == 0 then return "Ikke sett ennå" end
     return table.concat(parts, " · ")
 end
@@ -271,7 +301,7 @@ local function CreateRow(index)
     row.remove:SetScript("OnClick", function() RemoveEntry(row.entry) end)
     UI.AddTooltip(row.remove, function() return RemoveTooltipText(row.entry) end)
 
-    UI.AddTooltip(row, function() return row.entry.name, DetailText(row.entry) end)
+    UI.AddTooltip(row, function() return row.entry.name, DetailLines(row.entry) end)
     return row
 end
 
@@ -279,7 +309,7 @@ local function FillRow(row, entry)
     row.entry = entry
     row.name:SetText(entry.name)
     row.source:SetText(SourceTag(entry))
-    row.detail:SetText(DetailText(entry))
+    row.detail:SetText(SummaryText(entry))
     row.remove:SetShown(CanRemove(entry))
 end
 
@@ -296,13 +326,13 @@ local function CreateAddArea(frame)
     frame.reasonInput:SetPoint("LEFT", frame.nameInput, "RIGHT", 18, 0)
     frame.reasonInput:SetScript("OnEnterPressed", AddToPersonalList)
 
-    local personalButton = UI.CreateButton(frame, CONTENT_WIDTH / 2 - 4, "Legg til i min liste", AddToPersonalList)
+    local personalButton = UI.CreateButton(frame, CONTENT_WIDTH / 2 - 4, "Legg til på min liste", AddToPersonalList)
     personalButton:SetPoint("TOPLEFT", EDGE, -94)
     UI.AddTooltip(personalButton, function()
         return "Min liste", "Bare for deg. Gjelder alle karakterene dine på denne kontoen."
     end)
 
-    frame.guildButton = UI.CreateButton(frame, CONTENT_WIDTH / 2 - 4, "Legg til i guildlista", AddToGuildList)
+    frame.guildButton = UI.CreateButton(frame, CONTENT_WIDTH / 2 - 4, "Legg til på guildlista", AddToGuildList)
     frame.guildButton:SetPoint("TOPRIGHT", -EDGE, -94)
     UI.AddTooltip(frame.guildButton, function()
         local problem = ns.Sync.WhyCannotEdit()
@@ -324,7 +354,7 @@ local function CreateStatusArea(frame)
     frame.syncStatus:SetJustifyH("LEFT")
 
     frame.plateWarning = UI.CreateText(frame, "GameFontNormalSmall",
-        "|cffff8040Fiendtlige navneplater er av: varselet kommer seinere.|r")
+        "|cffff8040Fiendtlige navneplater er av: varselet kommer senere.|r")
     frame.plateWarning:SetPoint("TOPLEFT", EDGE, -156)
     frame.plateButton = UI.CreateButton(frame, 70, "Slå på", ns.TurnOnEnemyNameplates)
     frame.plateButton:SetHeight(18)
@@ -347,7 +377,7 @@ local function CreateListArea(frame)
     scroll:SetScrollChild(frame.listContent)
 
     frame.emptyText = UI.CreateText(listBox, "GameFontDisable",
-        "Lista er tom.\n\nLegg til navn over, eller importer\nen liste med «Del lista».")
+        "Lista er tom.\n\nLegg til navn ovenfor, eller importer\nen liste med «Del lista».")
     frame.emptyText:SetPoint("CENTER")
     frame.emptyText:SetWidth(LIST_WIDTH)
 end
@@ -369,7 +399,7 @@ local function CycleSound()
 end
 
 local function CreateOptionsArea(frame)
-    local header = UI.CreateText(frame, "GameFontNormal", "Varsling")
+    local header = UI.CreateText(frame, "GameFontNormal", "Innstillinger")
     header:SetPoint("TOPLEFT", EDGE, OPTIONS_TOP)
 
     frame.checkboxes = {}
@@ -386,16 +416,16 @@ local function CreateOptionsArea(frame)
     frame.soundButton:SetPoint("TOPLEFT", EDGE, buttonsTop)
     UI.AddTooltip(frame.soundButton, function() return "Lyd", "Klikk for neste lyd. Du hører den med en gang." end)
 
-    frame.pauseButton = UI.CreateButton(frame, 90, "", CycleAlertPause)
+    frame.pauseButton = UI.CreateButton(frame, 112, "", CycleAlertPause)
     frame.pauseButton:SetPoint("LEFT", frame.soundButton, "RIGHT", 6, 0)
     UI.AddTooltip(frame.pauseButton, function()
-        return "Pause", "Hvor lenge det går før samme navn kan varsle igjen."
+        return "Nytt varsel", "Hvor lenge samme navn må vente før det kan varsle på nytt. Andre navn varsler som vanlig."
     end)
 
-    local testButton = UI.CreateButton(frame, 56, "Test", ns.Alert.Test)
+    local testButton = UI.CreateButton(frame, 46, "Test", ns.Alert.Test)
     testButton:SetPoint("LEFT", frame.pauseButton, "RIGHT", 6, 0)
 
-    local shareButton = UI.CreateButton(frame, CONTENT_WIDTH - 124 - 90 - 56 - 18, "Del lista", ns.ExportImport.Toggle)
+    local shareButton = UI.CreateButton(frame, CONTENT_WIDTH - 124 - 112 - 46 - 18, "Del lista", ns.ExportImport.Show)
     shareButton:SetPoint("LEFT", testButton, "RIGHT", 6, 0)
     UI.AddTooltip(shareButton, function()
         return "Del lista", "Eksport og import som tekst, for eksempel til og fra Discord."
@@ -454,7 +484,7 @@ local function RefreshOptions()
         checkbox:SetChecked(ns.settings[checkbox.settingKey])
     end
     window.soundButton:SetText("Lyd: " .. ns.Alert.SoundByKey(ns.settings.soundKey).label)
-    window.pauseButton:SetText(("Pause: %d s"):format(ns.settings.alertPause))
+    window.pauseButton:SetText(("Nytt varsel: %d s"):format(ns.settings.alertPause))
 end
 
 function UI.Refresh()
@@ -471,6 +501,7 @@ function UI.Toggle()
         return
     end
     window:Show()
+    window:Raise()
 end
 
 ns:On("KOS_LIST_CHANGED", UI.Refresh)

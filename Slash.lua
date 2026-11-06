@@ -3,7 +3,7 @@ local _, ns = ...
 
 local HELP_LINES = {
     "/kos: åpne eller lukk vinduet",
-    "/kos add Navn [grunn]: legg til i din egen liste",
+    "/kos add Navn [grunn]: legg til på din egen liste",
     "/kos remove Navn: fjern fra din egen liste",
     "/kos guild add Navn [grunn]: legg til på guildlista",
     "/kos guild remove Navn: fjern fra guildlista",
@@ -95,7 +95,7 @@ local COMMANDS = {
     add = function(arguments)
         local fullName, reason = FirstWord(arguments)
         local shown, problem = ns.AddPersonal(fullName, reason)
-        Report(shown, problem, "%s er lagt til i din liste.")
+        Report(shown, problem, "%s er lagt til på din liste.")
     end,
     remove = function(arguments)
         local shown, problem = ns.RemovePersonal(ns.KeyFromFullName(arguments))
@@ -104,8 +104,8 @@ local COMMANDS = {
     guild = RunGuildCommand,
     list = PrintList,
     top = PrintTopKillers,
-    export = function() ns.ExportImport.Toggle() end,
-    import = function() ns.ExportImport.Toggle() end,
+    export = function() ns.ExportImport.Show() end,
+    import = function() ns.ExportImport.Show() end,
     sync = StartSync,
     plates = function() ns.TurnOnEnemyNameplates() end,
     test = function() ns.Alert.Test() end,

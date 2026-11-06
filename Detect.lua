@@ -8,8 +8,12 @@
 -- arenas the game can keep them secret (see ns.Plain); those sightings are skipped.
 local _, ns = ...
 
+local MAX_NAMEPLATES = 40   -- the game numbers nameplate units nameplate1 to nameplate40
+local SEEN_NOTE_INTERVAL = 10 -- seconds between two "last seen" notes for the same name
+
 local hasGivenNameplateTip = false
-local lastAlertAt = {} -- key -> GetTime() of that name's last alert
+local lastAlertAt = {}  -- key -> GetTime() of that name's last alert
+local lastNotedAt = {}  -- key -> GetTime() of that name's last "last seen" note
 
 local CHAT_SOURCES = {
     CHAT_MSG_SAY = "say",
@@ -18,21 +22,24 @@ local CHAT_SOURCES = {
     CHAT_MSG_TEXT_EMOTE = "emote",
 }
 
--- Every sighting comes through here. Returns the entry when the name is listed. The alert
--- itself waits alertPause seconds between two for the same name, so someone running in and
--- out of nameplate range doesn't set it off again and again.
+-- Every sighting comes through here. Returns the entry when the name is listed. "Last seen"
+-- is noted at most every SEEN_NOTE_INTERVAL seconds. The alert, and telling the guild, waits
+-- alertPause seconds between two for the same name, so someone running in and out of
+-- nameplate range doesn't set it off again and again.
 local function HandleSighting(name, realm, howSeen)
     if not ns.db then return nil end
     local entry = ns.FindEntry(name, realm)
     if not entry then return nil end
     ns.Nearby.Note(entry, howSeen)
     local now = GetTime()
-    local lastAlert = lastAlertAt[entry.key]
-    if lastAlert and now - lastAlert < ns.settings.alertPause then return entry end
+    local place = ns.CurrentPlace()
+    if not lastNotedAt[entry.key] or now - lastNotedAt[entry.key] >= SEEN_NOTE_INTERVAL then
+        lastNotedAt[entry.key] = now
+        ns.NoteLastSeen(entry.key, place, nil)
+    end
+    if lastAlertAt[entry.key] and now - lastAlertAt[entry.key] < ns.settings.alertPause then return entry end
     lastAlertAt[entry.key] = now
     ns.Alert.Show(entry, howSeen)
-    local place = ns.CurrentPlace()
-    ns.NoteLastSeen(entry.key, place, nil)
     if entry.inGuildList and ns.settings.shareSightings then
         ns.Share.AnnounceSighting(name, realm, place)
     end
@@ -52,12 +59,12 @@ local function CheckNameplate(unit)
     if entry then ns.Nearby.SetPlate(unit, entry.key) end
 end
 
+-- Looks at every nameplate on screen now. The unit names are tried directly, since the field
+-- that holds a nameplate frame's unit has changed name between game versions.
 local function ScanNameplates()
-    if not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
-    local ok, plates = pcall(C_NamePlate.GetNamePlates)
-    if not ok or type(plates) ~= "table" then return end
-    for _, plate in ipairs(plates) do
-        if plate.namePlateUnitToken then CheckNameplate(plate.namePlateUnitToken) end
+    for index = 1, MAX_NAMEPLATES do
+        local unit = "nameplate" .. index
+        if UnitExists(unit) then CheckNameplate(unit) end
     end
 end
 
@@ -84,7 +91,7 @@ end
 local function GiveNameplateTip()
     if hasGivenNameplateTip or ns.EnemyNameplatesOn() then return end
     hasGivenNameplateTip = true
-    ns:Print("Fiendtlige navneplater er av, så varselet kommer seinere. Skriv /kos plates for å slå dem på.")
+    ns:Print("Fiendtlige navneplater er av, så varselet kommer senere. Skriv /kos plates for å slå dem på.")
 end
 
 ns:On("NAME_PLATE_UNIT_ADDED", CheckNameplate)
