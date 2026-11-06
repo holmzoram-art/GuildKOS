@@ -168,9 +168,9 @@ local function AddToGuildList()
 end
 
 -- The X on a row takes the name off your own list when it is there, otherwise off the
--- synced guild list. Names that are only in Guild Info have no X: an officer removes those.
+-- guild list.
 local function CanRemove(entry)
-    return entry.inPersonalList or (entry.inSyncedList and ns.Sync.WhyCannotEdit() == nil)
+    return entry.inPersonalList or (entry.inGuildList and ns.Sync.WhyCannotEdit() == nil)
 end
 
 local function RemoveEntry(entry)
@@ -192,9 +192,6 @@ local function RemoveTooltipText(entry)
         return "Fjern fra din liste", "Navnet står fortsatt på guildlista."
     end
     if entry.inPersonalList then return "Fjern fra din liste" end
-    if entry.inGuildInfo then
-        return "Fjern fra guildlista", "Navnet står også i Guild Info. Der må en offiser fjerne det."
-    end
     return "Fjern fra guildlista", "Fjerner navnet for hele guilden."
 end
 
@@ -227,9 +224,8 @@ local function SeenText(entry)
 end
 
 local function OriginText(entry)
-    if entry.inSyncedList and entry.addedBy then return "Lagt til av " .. Ambiguate(entry.addedBy, "guild") end
-    if entry.inGuildInfo then return "Fra Guild Info" end
-    return nil
+    if not (entry.inGuildList and entry.addedBy) then return nil end
+    return "Lagt til av " .. Ambiguate(entry.addedBy, "guild")
 end
 
 local function AddPart(parts, part)
@@ -351,7 +347,7 @@ local function CreateListArea(frame)
     scroll:SetScrollChild(frame.listContent)
 
     frame.emptyText = UI.CreateText(listBox, "GameFontDisable",
-        "Lista er tom.\n\nLegg til navn over, eller skriv\n«KOS: Navn1, Navn2» i Guild Info.")
+        "Lista er tom.\n\nLegg til navn over, eller importer\nen liste med «Del lista».")
     frame.emptyText:SetPoint("CENTER")
     frame.emptyText:SetWidth(LIST_WIDTH)
 end
@@ -420,19 +416,14 @@ end
 -- Keeping it current
 --------------------------------------------------------------------------------
 
--- "Guildlista: 14 navn (3 fra Guild Info) · rank 1–3 kan endre"
+-- "Guildlista: 14 navn"
 local function GuildListStatus()
     if not IsInGuild() then return "Ikke i guild: bare din egen liste brukes." end
-    local guildCount, guildInfoCount = 0, 0
+    local guildCount = 0
     for _, entry in ipairs(ns.AllEntries()) do
         if entry.inGuildList then guildCount = guildCount + 1 end
-        if entry.inGuildInfo then guildInfoCount = guildInfoCount + 1 end
     end
-    local text = ("Guildlista: %d navn"):format(guildCount)
-    if guildInfoCount > 0 then text = text .. (" (%d fra Guild Info)"):format(guildInfoCount) end
-    local rankLimit = ns.Guild.EditRankLimit()
-    if rankLimit then text = text .. (" · rank 1–%d kan endre"):format(rankLimit) end
-    return text
+    return ("Guildlista: %d navn"):format(guildCount)
 end
 
 local function RefreshStatus()
@@ -479,8 +470,6 @@ function UI.Toggle()
         window:Hide()
         return
     end
-    -- Asks the game for fresh Guild Info, so an officer's edit shows up.
-    ns.Guild.RequestRoster()
     window:Show()
 end
 
@@ -489,4 +478,5 @@ ns:On("KOS_SEEN", UI.Refresh)
 ns:On("KOS_KILLED", UI.Refresh)
 ns:On("KOS_SYNCED", UI.Refresh)
 ns:On("KOS_SETTINGS_CHANGED", UI.Refresh)
-ns:On("GUILD_ROSTER_UPDATE", UI.Refresh)
+-- Joining or leaving a guild changes which guild list is shown.
+ns:On("PLAYER_GUILD_UPDATE", UI.Refresh)

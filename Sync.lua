@@ -15,8 +15,8 @@
 -- server's clock, the same for everyone. A removed name stays in the list, marked removed,
 -- so a copy that was offline and still has it can't bring it back.
 --
--- Who may change the list: every guild member, unless Guild Info has a KOS-rank line (see
--- Guild.lua). Changes by a member whose rank is too low are ignored by every copy.
+-- Every guild member may change the list. Each entry remembers who added it, and the window
+-- shows that next to the name.
 local _, ns = ...
 
 local Sync = {}
@@ -26,7 +26,7 @@ local ENTRY = "E1"
 local HELLO = "H1"
 local LIST_START = "D1"
 local LIST_END = "D2"
-local HELLO_DELAY = 20       -- seconds after login, so the roster and Guild Info are in first
+local HELLO_DELAY = 20       -- seconds after login, so the game has loaded the guild first
 local ANSWER_DELAY_MIN = 2   -- seconds a copy whose list differs waits before answering an H1,
 local ANSWER_DELAY_MAX = 10  -- so not every copy answers at once
 local ANSWER_WAIT = 300      -- seconds after our H1 during which a list counts as its answer
@@ -46,15 +46,6 @@ local function IsNewer(incoming, current)
     if not current then return true end
     if incoming.changedAt ~= current.changedAt then return incoming.changedAt > current.changedAt end
     return incoming.changedBy > current.changedBy
-end
-
--- Whether a change by this member counts. A member who isn't in the roster (it hasn't come
--- yet, or they have left the guild) is trusted, so their old entries aren't lost.
-local function MayEdit(editorFullName)
-    local rankLimit = ns.Guild.EditRankLimit()
-    if not rankLimit then return true end
-    local rankNumber = ns.Guild.RankNumberOf(editorFullName)
-    return rankNumber == nil or rankNumber <= rankLimit
 end
 
 -- The same list gives the same checksum on every copy: keys are hashed in sorted order.
@@ -110,7 +101,7 @@ end
 
 local function Merge(key, incoming)
     local entries = ns.SyncedEntries()
-    if not entries or not IsNewer(incoming, entries[key]) or not MayEdit(incoming.changedBy) then return end
+    if not entries or not IsNewer(incoming, entries[key]) then return end
     entries[key] = incoming
     ns:Fire("KOS_LIST_CHANGED")
 end
@@ -122,11 +113,6 @@ end
 -- Why you can't change the guild list right now, or nil when you can.
 function Sync.WhyCannotEdit()
     if not ns.SyncedEntries() then return "Du er ikke med i en guild." end
-    local rankLimit = ns.Guild.EditRankLimit()
-    local myRank = ns.Guild.MyRankNumber()
-    if rankLimit and (not myRank or myRank > rankLimit) then
-        return ("Bare rank 1–%d kan endre guildlista (KOS-rank i Guild Info)."):format(rankLimit)
-    end
     return nil
 end
 

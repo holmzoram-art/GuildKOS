@@ -10,10 +10,9 @@ En addon for WoW Forever. Du legger inn navn, og når en av dem er i nærheten f
 
 ## Guildlista
 
-Guildlista er felles for alle i guilden som har addonen. Navnene kommer to steder fra:
-
-**Fra addonen.** Skriv navnet (og gjerne en grunn) i `/kos`-vinduet og trykk «Legg til i guildlista».
-Alle med addonen har hele lista lagret hos seg, og addonene holder hverandre oppdatert:
+Guildlista er felles for alle i guilden som har addonen. Skriv navnet (og gjerne en grunn) i
+`/kos`-vinduet og trykk «Legg til i guildlista». Alle med addonen har hele lista lagret hos seg, og
+addonene holder hverandre oppdatert:
 
 - Et nytt eller fjernet navn sendes med en gang til alle som er pålogget.
 - Når noen logger på, sammenligner addonen lista med de andre og henter det som mangler. Den som
@@ -21,23 +20,7 @@ Alle med addonen har hele lista lagret hos seg, og addonene holder hverandre opp
   pålogget.
 - Det er ingen grense på hvor mange navn lista kan ha.
 - Fjerner noen et navn, blir det borte hos alle. Det kommer ikke tilbake fra noen med en gammel liste.
-
-**Fra Guild Info.** Offiserer kan også skrive navn i guildens Guild Info, uten addonen:
-
-```
-KOS: Forræder, Sviker-Firemaw, Judas
-```
-
-Addonen skriver aldri i Guild Info. Navn derfra må fjernes der.
-
-**Hvem får endre lista?** Alle i guilden, med mindre Guild Info har en linje som denne:
-
-```
-KOS-rank: 3
-```
-
-Da kan bare rank 1–3 legge til og fjerne navn (rank 1 er Guild Master). De andre ser lista, men
-kan ikke endre den.
+- Alle i guilden kan legge til og fjerne navn. Lista viser hvem som la til hvert navn.
 
 ## Min liste
 

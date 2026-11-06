@@ -1,14 +1,13 @@
 ## Interface: 16001
 ## Title: Guild KOS
 ## Notes: Varsler med lyd og blinkende skjerm når noen fra KOS-lista er i nærheten. Guildlista synkes mellom alle i guilden.
-## Version: 1.2.0
+## Version: 1.3.0
 ## IconTexture: Interface\Icons\Ability_Hunter_MarkedForDeath
 ## Category: PvP
 ## X-License: MIT
 ## SavedVariables: GuildKOSDB
 
 Core.lua
-Guild.lua
 Share.lua
 Sync.lua
 Alert.lua

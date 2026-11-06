@@ -1,6 +1,6 @@
 -- GuildKOS: the shared namespace, saved settings, game events, character names and the
 -- two KOS lists: your own list (saved for every character on the account) and the guild list,
--- which Guild.lua reads from the guild's Guild Info text.
+-- which every member's copy of the addon keeps and Sync.lua keeps in step.
 local addonName, ns = ...
 
 local CHAT_PREFIX = "|cffff2020KOS|r"
@@ -36,7 +36,6 @@ local DEFAULT_SETTINGS = {
     alertPause = 60,         -- seconds before the same name can alert again
 }
 
-ns.guildInfoNames = {} -- key -> shown name, from the KOS lines in Guild Info (Guild.lua)
 
 function ns:Print(...)
     print(CHAT_PREFIX, ...)
@@ -199,7 +198,7 @@ end
 -- The lists
 --------------------------------------------------------------------------------
 
--- The synced guild list of the guild you are in (Sync.lua keeps it in step with the other
+-- The guild list of the guild you are in (Sync.lua keeps it in step with the other
 -- members), or nil outside a guild and while the game hasn't said which guild yet. Each
 -- guild has its own, since your characters can be in different guilds.
 -- key -> { name, reason, addedBy, addedAt, changedBy, changedAt, removed }. A removed name
@@ -220,24 +219,20 @@ local function LiveSyncedEntry(key)
     return nil
 end
 
--- What the lists say about one key, or nil when it's on none of them:
--- { key, name, reason, addedBy, inGuildList, inSyncedList, inGuildInfo, inPersonalList }.
--- The guild list is the synced list and the KOS lines in Guild Info together. A name on
--- both your list and the guild list shows your reason.
+-- What the lists say about one key, or nil when it's on neither:
+-- { key, name, reason, addedBy, inGuildList, inPersonalList }. A name on both lists shows
+-- your own reason.
 function ns.EntryFor(key)
     if not ns.db then return nil end
     local personal = ns.db.personal[key]
     local synced = LiveSyncedEntry(key)
-    local guildInfoName = ns.guildInfoNames[key]
-    if not (personal or synced or guildInfoName) then return nil end
+    if not (personal or synced) then return nil end
     return {
         key = key,
-        name = (personal and personal.name) or (synced and synced.name) or guildInfoName,
+        name = (personal and personal.name) or synced.name,
         reason = (personal and personal.reason) or (synced and synced.reason) or nil,
         addedBy = synced and synced.addedBy or nil,
-        inGuildList = synced ~= nil or guildInfoName ~= nil,
-        inSyncedList = synced ~= nil,
-        inGuildInfo = guildInfoName ~= nil,
+        inGuildList = synced ~= nil,
         inPersonalList = personal ~= nil,
     }
 end
@@ -261,7 +256,6 @@ function ns.AllEntries()
         table.insert(entries, ns.EntryFor(key))
     end
     for key in pairs(ns.db.personal) do AddKey(key) end
-    for key in pairs(ns.guildInfoNames) do AddKey(key) end
     for key, synced in pairs(ns.SyncedEntries() or {}) do
         if not synced.removed then AddKey(key) end
     end

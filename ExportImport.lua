@@ -3,8 +3,7 @@
 -- reason after a dash:
 --     Forræder - Gikk alliance
 --     Sviker-Firemaw
--- Empty lines and lines that start with "#" are skipped, and a "KOS: Name1, Name2" line
--- copied from Guild Info works too.
+-- Empty lines and lines that start with "#" are skipped.
 local _, ns = ...
 
 local ExportImport = {}
@@ -19,8 +18,6 @@ local TEXT_TOP = -82
 local TEXT_BOTTOM = 52 -- room for the buttons under the text box
 local TEXT_INSET = 8
 local SCROLLBAR_SPACE = 24
-local KOS_LINE = "^[Kk][Oo][Ss]%s*:(.*)$"
-local NAME_PATTERN = "[^,;%s]+"
 -- What may stand between a name and its reason: "-", ":" or "–" (an en dash, 3 bytes in UTF-8).
 local REASON_SEPARATORS = { "^%-+%s*", "^:%s*", "^\226\128\147%s*" }
 
@@ -49,17 +46,10 @@ local function StripSeparator(text)
     return text
 end
 
--- Adds the names on one pasted line to `items` as { fullName, reason }.
+-- Adds the name on one pasted line to `items` as { fullName, reason }.
 local function ReadLine(line, items)
     local trimmed = line:match("^%s*(.-)%s*$")
     if trimmed == "" or trimmed:sub(1, 1) == "#" then return end
-    local namesText = trimmed:match(KOS_LINE)
-    if namesText then
-        for token in namesText:gmatch(NAME_PATTERN) do
-            table.insert(items, { fullName = token })
-        end
-        return
-    end
     local fullName, rest = trimmed:match("^(%S+)%s*(.-)$")
     table.insert(items, { fullName = fullName, reason = StripSeparator(rest) })
 end
