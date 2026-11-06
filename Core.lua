@@ -311,6 +311,25 @@ local function FillDefaults(settings)
     end
 end
 
+-- Names put on your own list the first time this addon loads, so testing can start without
+-- adding anyone. They go on your own list, never the guild list, so nothing about them is
+-- shared. Taken off with the X like any other name, and not put back after that.
+local STARTER_NAMES = { "Nektarion" }
+local STARTER_REASON = "Test"
+
+local function AddStarterNames(db)
+    if db.hasStarterNames then return end
+    db.hasStarterNames = true
+    for _, name in ipairs(STARTER_NAMES) do
+        local key = ns.NameKey(name)
+        db.personal[key] = db.personal[key] or {
+            name = ns.DisplayName(name),
+            reason = STARTER_REASON,
+            added = GetServerTime(),
+        }
+    end
+end
+
 local function ForgetOldSightings(lastSeen)
     local oldestKept = GetServerTime() - LAST_SEEN_KEEP_DAYS * SECONDS_PER_DAY
     for key, sighting in pairs(lastSeen) do
@@ -333,6 +352,7 @@ ns:On("ADDON_LOADED", function(loadedName)
     db.syncedByGuild = db.syncedByGuild or {} -- "Guild-Realm" -> synced guild list (ns.SyncedEntries)
     db.settings = db.settings or {}
     FillDefaults(db.settings)
+    AddStarterNames(db)
     ForgetOldSightings(db.lastSeen)
     ns.db = db
     ns.settings = db.settings
