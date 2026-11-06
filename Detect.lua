@@ -31,10 +31,16 @@ local CHAT_SOURCES = {
 -- Every sighting comes through here. Returns the entry when the name is listed. "Last seen"
 -- is noted at most every SEEN_NOTE_INTERVAL seconds. The alert, and telling the guild, waits
 -- alertPause seconds between two for the same name, so someone running in and out of
--- nameplate range doesn't set it off again and again.
+-- nameplate range doesn't set it off again and again. A sighting that comes with a first name
+-- only (a chat sender can) matches a name saved with its last name too.
 local function HandleSighting(firstName, lastName, howSeen)
     if not ns.db then return nil end
-    local entry = ns.FindEntry(firstName, lastName)
+    local entry
+    if lastName then
+        entry = ns.FindEntry(firstName, lastName)
+    else
+        entry = ns.FindEntryByFirstName(firstName)
+    end
     if not entry then return nil end
     ns.Nearby.Note(entry, howSeen)
     local now = GetTime()
