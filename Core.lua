@@ -9,7 +9,7 @@ local LAST_SEEN_KEEP_DAYS = 14 -- "last seen" notes older than this are forgotte
 local MAX_NAME_BYTES = 48      -- a name is at most 12 letters, and a letter is up to 4 bytes in UTF-8
 local MAX_REASON_BYTES = 80    -- keeps a shared entry inside one 255-byte addon message
 
-ns.INVALID_NAME = "Ugyldig navn. Skriv karakternavnet, eventuelt med realm bak (Navn-Realm)."
+ns.INVALID_NAME = "Ugyldig navn. Skriv bare karakternavnet, uten tall, mellomrom eller tegn."
 
 -- How a sighting happened, as shown in alerts and chat.
 ns.HOW_SEEN_TEXT = {

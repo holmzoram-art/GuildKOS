@@ -288,7 +288,7 @@ end
 --------------------------------------------------------------------------------
 
 local function CreateAddArea(frame)
-    frame.nameInput = CreateInput(frame, 150, "Navn (eller Navn-Realm)")
+    frame.nameInput = CreateInput(frame, 150, "Navn")
     frame.nameInput:SetPoint("TOPLEFT", EDGE + 6, -62)
     frame.nameInput:SetScript("OnEnterPressed", AddToPersonalList)
 

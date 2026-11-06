@@ -2,7 +2,7 @@
 -- as a backup or to share it, and paste a list back in. One name per line, with an optional
 -- reason after a dash:
 --     Forræder - Gikk alliance
---     Sviker-Firemaw
+--     Sviker
 -- Empty lines and lines that start with "#" are skipped.
 local _, ns = ...
 

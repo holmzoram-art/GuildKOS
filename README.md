@@ -26,8 +26,6 @@ addonene holder hverandre oppdatert:
 
 Din egen liste er bare din. Den gjelder alle karakterene dine på kontoen, og blir aldri delt.
 
-Navn fra en annen realm skrives `Navn-Realm`. Et navn uten realm gjelder på alle realmer.
-
 ## Del lista som tekst
 
 «Del lista» i vinduet (eller `/kos export`) viser hele lista som tekst, ett navn per linje. Kopier
@@ -36,7 +34,7 @@ samme vindu og trykk «Til guildlista» eller «Til min liste».
 
 ```
 Forræder - Gikk alliance
-Sviker-Firemaw
+Sviker
 ```
 
 ## Guilden får beskjed
