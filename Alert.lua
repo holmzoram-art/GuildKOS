@@ -123,9 +123,15 @@ local function DetailLine(entry, howSeen)
     return ("%s · sett via %s"):format(why, ns.HOW_SEEN_TEXT[howSeen] or howSeen)
 end
 
+-- "er i nærheten", or "er i samme sone" for a Battle.net friend in your zone (Friends.lua).
+local function WhereText(howSeen)
+    if howSeen == "friendZone" then return "er i samme sone" end
+    return "er i nærheten"
+end
+
 local function ShowBanner(entry, howSeen)
     banner = banner or CreateBanner()
-    banner.title:SetText(("KOS: %s er i nærheten!"):format(entry.name))
+    banner.title:SetText(("KOS: %s %s!"):format(entry.name, WhereText(howSeen)))
     banner.detail:SetText(DetailLine(entry, howSeen))
     banner.fade:Stop()
     banner:Show()
@@ -139,7 +145,7 @@ function Alert.Show(entry, howSeen)
     if settings.showBanner then ShowBanner(entry, howSeen) end
     -- Makes the game's taskbar icon blink when the game is in the background.
     if FlashClientIcon then FlashClientIcon() end
-    ns:Print(("|cffff5050%s|r er i nærheten! %s"):format(entry.name, DetailLine(entry, howSeen)))
+    ns:Print(("|cffff5050%s|r %s! %s"):format(entry.name, WhereText(howSeen), DetailLine(entry, howSeen)))
 end
 
 -- A made-up sighting, so you can hear the sound and place the "i nærheten" window.

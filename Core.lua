@@ -18,9 +18,12 @@ ns.HOW_SEEN_TEXT = {
     mouseover = "musepeker",
     focus = "focus",
     groupTarget = "gruppens target",
+    targetTarget = "target sitt target",
+    plateTarget = "noen i nærheten har ham i target",
     say = "/say",
     yell = "/yell",
     emote = "emote",
+    friendZone = "Battle.net-vennelista",
     test = "test",
 }
 
@@ -33,9 +36,10 @@ local DEFAULT_SETTINGS = {
     shareSightings = true,   -- tell the guild when you see someone from the guild list
     showGuildReports = true, -- print the guild's sightings and kills in chat
     announceKills = true,    -- say in guild chat when you kill someone from the guild list
+    longNameplates = false,  -- show nameplates as far away as the game allows (Detect.lua)
+    watchFriends = true,     -- alert when a Battle.net friend on a list is in your zone (Friends.lua)
     alertPause = 60,         -- seconds before the same name can alert again
 }
-
 
 function ns:Print(...)
     print(CHAT_PREFIX, ...)
@@ -277,6 +281,18 @@ function ns.FindEntry(firstName, lastName)
     local fullKey = ns.NameKey(firstName, lastName)
     local firstNameKey = ns.NameKey(firstName)
     return ns.EntryFor(fullKey) or (fullKey ~= firstNameKey and ns.EntryFor(firstNameKey)) or nil
+end
+
+-- The first entry whose first name is `firstName`, whatever its last name, or nil. For
+-- places that give a first name only, where FindEntry would miss a name saved in full.
+function ns.FindEntryByFirstName(firstName)
+    local firstNameKey = ns.NameKey(firstName)
+    for _, entry in ipairs(ns.AllEntries()) do
+        if entry.key == firstNameKey or entry.key:sub(1, #firstNameKey + 1) == firstNameKey .. " " then
+            return entry
+        end
+    end
+    return nil
 end
 
 -- Every entry on either list, sorted by name.

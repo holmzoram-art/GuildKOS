@@ -1,17 +1,23 @@
 -- Finding listed characters near you. WoW Forever doesn't let addons read the combat log
 -- (registering COMBAT_LOG_EVENT_UNFILTERED is forbidden there), so the addon looks at what
 -- the game does let it see:
---   * nameplates: the earliest warning, but only with enemy nameplates turned on
+--   * nameplates: the earliest warning, but only with enemy nameplates turned on; the
+--     "longNameplates" setting shows them as far away as the game allows
 --   * your target, mouseover and focus, and what your party or raid targets
+--   * whom your target, your focus or a unit with a nameplate has in target
 --   * /say, /yell and emotes: the enemy faction's words are garbled, but the name is real
+-- Battle.net friends in your zone are in Friends.lua.
 -- Player characters' names stay readable in the open world, also in combat. In battlegrounds and
 -- arenas the game can keep them secret (see ns.Plain); those sightings are skipped.
 local _, ns = ...
 
 local MAX_NAMEPLATES = 40   -- the game numbers nameplate units nameplate1 to nameplate40
 local SEEN_NOTE_INTERVAL = 10 -- seconds between two "last seen" notes for the same name
+local DISTANCE_CVAR = "nameplateMaxDistance"
+local LONG_DISTANCE = "60"  -- yards; the most retail allows, and the game lowers it where less is allowed
 
 local hasGivenNameplateTip = false
+local isDistanceWaiting = false -- a nameplate distance change waits for combat to end
 local lastAlertAt = {}  -- key -> GetTime() of that name's last alert
 local lastNotedAt = {}  -- key -> GetTime() of that name's last "last seen" note
 
@@ -95,16 +101,61 @@ local function GiveNameplateTip()
     ns:Print("Fiendtlige navneplater er av, så varselet kommer senere. Skriv /kos plates for å slå dem på.")
 end
 
+-- The "longNameplates" setting: nameplates as far away as the game allows. The distance the
+-- player had before is kept in the saved data and put back when the setting is turned off.
+-- The game blocks nameplate settings in combat, so a change then waits for combat to end.
+local function ApplyNameplateDistance()
+    if not (C_CVar and C_CVar.GetCVar and C_CVar.SetCVar) then return end
+    if InCombatLockdown() then
+        isDistanceWaiting = true
+        return
+    end
+    isDistanceWaiting = false
+    if ns.settings.longNameplates and not ns.db.nameplateDistanceBefore then
+        ns.db.nameplateDistanceBefore = C_CVar.GetCVar(DISTANCE_CVAR) or ""
+        C_CVar.SetCVar(DISTANCE_CVAR, LONG_DISTANCE)
+        ns:Print(("Navneplater vises nå på opptil %s meter."):format(C_CVar.GetCVar(DISTANCE_CVAR) or LONG_DISTANCE))
+    elseif not ns.settings.longNameplates and ns.db.nameplateDistanceBefore then
+        if ns.db.nameplateDistanceBefore ~= "" then C_CVar.SetCVar(DISTANCE_CVAR, ns.db.nameplateDistanceBefore) end
+        ns.db.nameplateDistanceBefore = nil
+        ns:Print("Navneplatene har fått tilbake avstanden de hadde før.")
+    end
+end
+
+-- Whose target to look at when UNIT_TARGET fires for `unit`, and how that sighting is shown;
+-- nil for units the addon doesn't follow.
+local function TargetSource(unit)
+    if IsGroupUnit(unit) then return "groupTarget" end
+    if unit == "target" or unit == "focus" then return "targetTarget" end
+    if unit:find("^nameplate%d") then return "plateTarget" end
+    return nil
+end
+
 ns:On("NAME_PLATE_UNIT_ADDED", CheckNameplate)
 ns:On("NAME_PLATE_UNIT_REMOVED", function(unit) ns.Nearby.ClearPlate(unit) end)
-ns:On("PLAYER_TARGET_CHANGED", function() CheckUnit("target", "target") end)
 ns:On("UPDATE_MOUSEOVER_UNIT", function() CheckUnit("mouseover", "mouseover") end)
-ns:On("PLAYER_FOCUS_CHANGED", function() CheckUnit("focus", "focus") end)
+
+ns:On("PLAYER_TARGET_CHANGED", function()
+    CheckUnit("target", "target")
+    CheckUnit("targettarget", "targetTarget")
+end)
+
+ns:On("PLAYER_FOCUS_CHANGED", function()
+    CheckUnit("focus", "focus")
+    CheckUnit("focustarget", "targetTarget")
+end)
 
 ns:On("UNIT_TARGET", function(unit)
     unit = ns.Plain(unit)
-    if type(unit) ~= "string" or not IsGroupUnit(unit) then return end
-    CheckUnit(unit .. "target", "groupTarget")
+    if type(unit) ~= "string" then return end
+    local howSeen = TargetSource(unit)
+    if howSeen then CheckUnit(unit .. "target", howSeen) end
+end)
+
+ns:On("KOS_SETTINGS_CHANGED", ApplyNameplateDistance)
+
+ns:On("PLAYER_REGEN_ENABLED", function()
+    if isDistanceWaiting then ApplyNameplateDistance() end
 end)
 
 for eventName, howSeen in pairs(CHAT_SOURCES) do

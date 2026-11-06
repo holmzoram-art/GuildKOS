@@ -79,9 +79,15 @@ Når du eller noen i gruppa di dreper et navn fra guildlista, skriver addonen de
 WoW Forever lar ikke addons lese combat-loggen. Derfor ser addonen etter folk i:
 
 - **navneplater**, som gir det tidligste varselet. Fiendtlige navneplater må være slått på; skriv
-  `/kos plates`.
+  `/kos plates`. Med «Navneplater på lang avstand» i vinduet vises de så langt unna som spillet
+  tillater (opptil 60 meter). Avstanden du hadde før, kommer tilbake når du slår det av.
 - ditt target, musepeker og focus, og det gruppa di har i target
+- hvem target-en din, focus-en din eller noen med navneplate har i target. Da fanges også folk du
+  ikke ser selv.
 - `/say`, `/yell` og emotes. Ordene fra den andre faksjonen blir rotete, men navnet er ekte.
+- **Battle.net-vennelista**: står karakteren til en av vennene dine på lista, får du varsel når den
+  er i samme sone som deg, én gang per sone. Vennelista viser sonen, ikke hvor langt unna. Ingenting
+  om vennene dine deles med guilden.
 
 I battlegrounds og arenaer kan spillet skjule navn for addons. Der virker varslene og drapstellingen
 dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også i kamp.

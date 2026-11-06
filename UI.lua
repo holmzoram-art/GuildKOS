@@ -9,7 +9,7 @@ ns.UI = UI
 
 local WINDOW_NAME = "GuildKOSWindow" -- a global name, so Escape can close the window
 local WINDOW_WIDTH = 420
-local WINDOW_HEIGHT = 556
+local WINDOW_HEIGHT = 580
 local EDGE = 22 -- space between the window's border and its content
 local CONTENT_WIDTH = WINDOW_WIDTH - 2 * EDGE
 local LIST_TOP = -178
@@ -52,6 +52,12 @@ local CHECKBOXES = {
     { key = "announceKills", label = "Kunngjør drap i guildchat",
         tooltip = "Når du eller gruppa di dreper noen fra guildlista, skriver addonen det i guildchat, "
             .. "med hvor mange ganger de er tatt." },
+    { key = "longNameplates", label = "Navneplater på lang avstand",
+        tooltip = "Viser navneplater så langt unna som spillet tillater (opptil 60 meter), så varselet "
+            .. "kommer tidligere. Avstanden du hadde før, kommer tilbake når du slår det av." },
+    { key = "watchFriends", label = "Varsle om Battle.net-venner",
+        tooltip = "Står karakteren til en Battle.net-venn på lista, får du varsel når den er i samme sone "
+            .. "som deg. Vennelista viser sonen, ikke hvor langt unna." },
 }
 
 local window
