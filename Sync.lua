@@ -50,10 +50,6 @@ local listBeingHeard  -- { sender, versions = { key -> entry } } while a whole l
 local lastHeard = {}  -- key -> newest version another copy sent, to skip sending it again
 local lastSync        -- { at = GetServerTime(), from = "Ola" } when a whole list last came in
 
-local function MyFullName()
-    return UnitName("player") .. "-" .. ns.OwnRealm()
-end
-
 local function RandomBetween(low, high)
     return low + math.random() * (high - low)
 end
@@ -119,15 +115,15 @@ end
 
 -- The key and entry an E1 message carries, or nil when it is broken.
 local function DecodeEntry(fields)
-    local name, realm = ns.SplitName(fields[2] or "")
+    local firstName, lastName = ns.SplitName(fields[2])
     local changedAt = ReadTime(fields[3])
     local changedBy = ns.Share.CleanText(fields[4])
-    if not ns.IsValidName(name) or not ns.IsValidRealm(realm) or not changedAt or changedBy == "" then
+    if not ns.IsValidFullName(firstName, lastName) or not changedAt or changedBy == "" then
         return nil
     end
     local addedBy = ns.Share.CleanText(fields[7])
-    return ns.NameKey(name, realm), {
-        name = ns.DisplayName(name, realm),
+    return ns.NameKey(firstName, lastName), {
+        name = ns.DisplayName(firstName, lastName),
         changedAt = changedAt,
         changedBy = changedBy,
         removed = fields[5] == "1",
@@ -169,19 +165,19 @@ end
 
 -- Returns the name as shown, or nil and why not.
 function Sync.Add(fullName, reason)
-    local name, realm = ns.SplitName(fullName or "")
-    if not ns.IsValidName(name) or not ns.IsValidRealm(realm) then return nil, ns.INVALID_NAME end
+    local firstName, lastName = ns.SplitName(fullName)
+    if not ns.IsValidFullName(firstName, lastName) then return nil, ns.INVALID_NAME end
     local problem = Sync.WhyCannotEdit()
     if problem then return nil, problem end
-    local key = ns.NameKey(name, realm)
+    local key = ns.NameKey(firstName, lastName)
     local previous = ns.SyncedEntries()[key]
     local listed = previous and not previous.removed and previous or nil
     local entry = {
-        name = ns.DisplayName(name, realm),
+        name = ns.DisplayName(firstName, lastName),
         reason = ns.CleanReason(reason) or (listed and listed.reason),
-        addedBy = listed and listed.addedBy or MyFullName(),
+        addedBy = listed and listed.addedBy or ns.MyFullName(),
         addedAt = listed and listed.addedAt or GetServerTime(),
-        changedBy = MyFullName(),
+        changedBy = ns.MyFullName(),
         changedAt = NextChangeTime(previous),
         removed = false,
     }
@@ -197,7 +193,7 @@ function Sync.Remove(key)
     if not current or current.removed then return nil, "Navnet står ikke på guildlista." end
     SaveMyChange(key, {
         name = current.name,
-        changedBy = MyFullName(),
+        changedBy = ns.MyFullName(),
         changedAt = NextChangeTime(current),
         removed = true,
     })

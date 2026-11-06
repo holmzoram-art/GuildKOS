@@ -9,7 +9,7 @@ local LAST_SEEN_KEEP_DAYS = 14 -- "last seen" notes older than this are forgotte
 local MAX_NAME_BYTES = 48      -- a name is at most 12 letters, and a letter is up to 4 bytes in UTF-8
 local MAX_REASON_BYTES = 80    -- keeps a shared entry inside one 255-byte addon message
 
-ns.INVALID_NAME = "Ugyldig navn. Skriv bare karakternavnet, uten tall, mellomrom eller tegn."
+ns.INVALID_NAME = "Ugyldig navn. Skriv fornavn og etternavn, for eksempel «Nektarion Stormhoof»."
 
 -- How a sighting happened, as shown in alerts and chat.
 ns.HOW_SEEN_TEXT = {
@@ -141,67 +141,91 @@ local function UpperFirstLetter(text)
     return "\195" .. string.char(code - CASE_STEP) .. text:sub(3)
 end
 
--- Realms are written without spaces in "Name-Realm" ("Navn-LivingFlame"). Dashes and
--- apostrophes are dropped from the key as well, so every way of writing a realm matches.
-local function RealmKeyOf(realm)
-    return LowerText((realm:gsub("[%s%-'|]", "")))
-end
+-- WoW Forever gives every character a first and a last name: "Nektarion Stormhoof". A first
+-- name alone is not unique. UnitName returns the two as separate values (on other WoW
+-- versions the second value is the realm), and chat and addon messages name the sender
+-- "First Last". A name saved with only a first name matches every character with that first
+-- name; one saved with both matches only that character.
 
+-- Used for the guild's key in the saved data (ns.SyncedEntries).
 function ns.OwnRealm()
     local realm = (GetNormalizedRealmName and GetNormalizedRealmName()) or GetRealmName() or ""
     return (realm:gsub("%s", ""))
 end
 
-local function OwnRealmKey()
-    return RealmKeyOf(ns.OwnRealm())
-end
-
--- Splits "Name" or "Name-Realm" and trims the spaces around it. The realm is nil when absent.
+-- "Nektarion Stormhoof" -> "Nektarion", "Stormhoof"; "Nektarion" -> "Nektarion", nil. A
+-- "-Realm" ending, which chat senders can carry, is dropped. Three words or more come back
+-- whole, and ns.IsValidName turns them down.
 function ns.SplitName(fullName)
-    local trimmed = fullName:match("^%s*(.-)%s*$")
-    local name, realm = trimmed:match("^([^%-]+)%-(.*)$")
-    if not name then return trimmed, nil end
-    if realm == "" then realm = nil end
-    return name, realm
+    local trimmed = (fullName or ""):gsub("%-.*$", ""):match("^%s*(.-)%s*$")
+    local firstName, lastName = trimmed:match("^(%S+)%s+(%S+)$")
+    if firstName then return firstName, lastName end
+    return trimmed, nil
 end
 
--- Character names have no digits, spaces or punctuation. Letters like æ, ø and å are fine:
--- their bytes are above 127, which Lua's %d, %p, %s and %c never match.
+-- One name part. Names have no digits, spaces or punctuation. Letters like æ, ø and å are
+-- fine: their bytes are above 127, which Lua's %d, %p, %s and %c never match.
 function ns.IsValidName(name)
     if type(name) ~= "string" or name == "" or #name > MAX_NAME_BYTES then return false end
     return not name:find("[%d%p%s%c]")
 end
 
--- A realm part ("Navn-Realm") is optional; when there, it is letters, spaces, ' and - only,
--- and short, so a shared entry always fits in one addon message.
-local MAX_REALM_BYTES = 30
-
-function ns.IsValidRealm(realm)
-    if realm == nil then return true end
-    if type(realm) ~= "string" or #realm > MAX_REALM_BYTES then return false end
-    return not realm:find("[^%a%s'%-\128-\255]")
+-- A first name, and a last name when there is one.
+function ns.IsValidFullName(firstName, lastName)
+    return ns.IsValidName(firstName) and (lastName == nil or ns.IsValidName(lastName))
 end
 
--- The lookup key for a character: the name in small letters, plus "-realm" when the character
--- is from another realm than yours. A name saved without a realm matches it on every realm.
-function ns.NameKey(name, realm)
-    local nameKey = LowerText(name)
-    if not realm or realm == "" then return nameKey end
-    local realmKey = RealmKeyOf(realm)
-    if realmKey == "" or realmKey == OwnRealmKey() then return nameKey end
-    return nameKey .. "-" .. realmKey
+-- The lookup key for a character: "nektarion stormhoof", or "nektarion" without a last name.
+function ns.NameKey(firstName, lastName)
+    if not lastName or lastName == "" then return LowerText(firstName) end
+    return LowerText(firstName) .. " " .. LowerText(lastName)
 end
 
 function ns.KeyFromFullName(fullName)
-    return ns.NameKey(ns.SplitName(fullName or ""))
+    return ns.NameKey(ns.SplitName(fullName))
 end
 
--- How a typed name is shown and saved: "forræder" becomes "Forræder", and the realm is kept
--- only when it isn't your own.
-function ns.DisplayName(name, realm)
-    local shown = UpperFirstLetter(LowerText(name))
-    if not realm or RealmKeyOf(realm) == "" or RealmKeyOf(realm) == OwnRealmKey() then return shown end
-    return shown .. "-" .. (realm:gsub("[%s|]", ""))
+-- How a name is shown and saved: "nektarion stormhoof" becomes "Nektarion Stormhoof".
+function ns.DisplayName(firstName, lastName)
+    local shown = UpperFirstLetter(LowerText(firstName))
+    if not lastName or lastName == "" then return shown end
+    return shown .. " " .. UpperFirstLetter(LowerText(lastName))
+end
+
+-- A unit's name as "First Last", or nil when the game keeps it secret or doesn't know it.
+function ns.FullNameOfUnit(unit)
+    local firstName, lastName = UnitName(unit)
+    firstName, lastName = ns.Plain(firstName), ns.Plain(lastName)
+    if type(firstName) ~= "string" or firstName == "" or firstName == UNKNOWNOBJECT then return nil end
+    if type(lastName) ~= "string" or lastName == "" then return firstName end
+    return firstName .. " " .. lastName
+end
+
+function ns.MyFullName()
+    return ns.FullNameOfUnit("player") or UnitName("player")
+end
+
+-- Whether a sender name ("First Last", maybe with "-Realm") is you. A sender given with only
+-- a first name counts as you when the first name matches.
+function ns.IsMe(senderName)
+    local senderFirst, senderLast = ns.SplitName(senderName)
+    local myFirst, myLast = ns.SplitName(ns.MyFullName())
+    if LowerText(senderFirst) ~= LowerText(myFirst) then return false end
+    return senderLast == nil or myLast == nil or LowerText(senderLast) == LowerText(myLast)
+end
+
+-- "Nektarion Stormhoof - gikk alliance" -> "Nektarion Stormhoof", "gikk alliance". The reason
+-- comes after " - ", ":" or " – " (an en dash, 3 bytes in UTF-8); without one, the whole text
+-- is the name.
+local REASON_SEPARATORS = { "%s+%-+%s*", "%s*:%s*", "%s+\226\128\147%s*" }
+
+function ns.SplitNameAndReason(text)
+    local trimmed = (text or ""):match("^%s*(.-)%s*$")
+    for _, separator in ipairs(REASON_SEPARATORS) do
+        local name, reason = trimmed:match("^(.-)" .. separator .. "(.*)$")
+        if name then return name, reason end
+    end
+    return trimmed, nil
 end
 
 --------------------------------------------------------------------------------
@@ -247,12 +271,12 @@ function ns.EntryFor(key)
     }
 end
 
--- The entry for a character the game showed us, or nil. A name saved with its realm is
--- tried first, then the name alone, which stands for every realm.
-function ns.FindEntry(name, realm)
-    local fullKey = ns.NameKey(name, realm)
-    local nameOnlyKey = ns.NameKey(name)
-    return ns.EntryFor(fullKey) or (fullKey ~= nameOnlyKey and ns.EntryFor(nameOnlyKey)) or nil
+-- The entry for a character the game showed us, or nil. The full name is tried first, then
+-- the first name alone, which stands for every last name.
+function ns.FindEntry(firstName, lastName)
+    local fullKey = ns.NameKey(firstName, lastName)
+    local firstNameKey = ns.NameKey(firstName)
+    return ns.EntryFor(fullKey) or (fullKey ~= firstNameKey and ns.EntryFor(firstNameKey)) or nil
 end
 
 -- Every entry on either list, sorted by name.
@@ -297,10 +321,10 @@ end
 
 -- Adds a name to your own list. Returns the name as shown, or nil and why not.
 function ns.AddPersonal(fullName, reason)
-    local name, realm = ns.SplitName(fullName or "")
-    if not ns.IsValidName(name) or not ns.IsValidRealm(realm) then return nil, ns.INVALID_NAME end
-    local shown = ns.DisplayName(name, realm)
-    ns.db.personal[ns.NameKey(name, realm)] = {
+    local firstName, lastName = ns.SplitName(fullName)
+    if not ns.IsValidFullName(firstName, lastName) then return nil, ns.INVALID_NAME end
+    local shown = ns.DisplayName(firstName, lastName)
+    ns.db.personal[ns.NameKey(firstName, lastName)] = {
         name = shown,
         reason = ns.CleanReason(reason),
         added = GetServerTime(),
@@ -338,16 +362,32 @@ end
 -- Names put on your own list the first time this addon loads, so testing can start without
 -- adding anyone. They go on your own list, never the guild list, so nothing about them is
 -- shared. Taken off with the X like any other name, and not put back after that.
-local STARTER_NAMES = { "Nektarion" }
+-- STARTER_VERSION 2 has the full name; version 1 put "Nektarion" alone, which is swapped.
+local STARTER_NAMES = { "Nektarion Stormhoof" }
+local OLD_STARTER_KEYS = { "nektarion" }
 local STARTER_REASON = "Test"
+local STARTER_VERSION = 2
 
 local function AddStarterNames(db)
-    if db.hasStarterNames then return end
-    db.hasStarterNames = true
-    for _, name in ipairs(STARTER_NAMES) do
-        local key = ns.NameKey(name)
+    local addedVersion = db.starterNamesVersion or (db.hasStarterNames and 1) or 0
+    if addedVersion >= STARTER_VERSION then return end
+    db.starterNamesVersion = STARTER_VERSION
+    db.hasStarterNames = nil
+    local hadOldStarter = false
+    for _, oldKey in ipairs(OLD_STARTER_KEYS) do
+        local old = db.personal[oldKey]
+        if old and old.reason == STARTER_REASON then
+            db.personal[oldKey] = nil
+            hadOldStarter = true
+        end
+    end
+    -- A version 1 install whose tester already took the old name off doesn't get the new one.
+    if addedVersion == 1 and not hadOldStarter then return end
+    for _, fullName in ipairs(STARTER_NAMES) do
+        local firstName, lastName = ns.SplitName(fullName)
+        local key = ns.NameKey(firstName, lastName)
         db.personal[key] = db.personal[key] or {
-            name = ns.DisplayName(name),
+            name = ns.DisplayName(firstName, lastName),
             reason = STARTER_REASON,
             added = GetServerTime(),
         }

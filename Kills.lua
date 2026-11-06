@@ -23,16 +23,21 @@ local MAX_REPORTED_COUNT = 100000 -- a count from another copy above this is ign
 local lastKillAt = {}  -- key -> GetTime() of the last kill counted for that name
 local lastToldAt = {}  -- key -> GetTime() when guild chat last said that name was killed
 
--- A player character's name and realm (nil for your own realm) from a GUID, or nil when the
--- GUID is secret, isn't a player's, or the game doesn't know that player.
-local function PlayerNameFromGUID(guid)
+-- A player character's "First Last" from a GUID, or nil when the GUID is secret, isn't a
+-- player's, or the game doesn't know that player. A unit the game has for the GUID (your
+-- target, a nameplate) gives both names; GetPlayerInfoByGUID is the fallback, and on WoW
+-- Forever its last value holds the last name where other versions put the realm.
+local function PlayerFullNameFromGUID(guid)
     guid = ns.Plain(guid)
     if type(guid) ~= "string" or not guid:find("^Player%-") then return nil end
-    local ok, _, _, _, _, _, name, realm = pcall(GetPlayerInfoByGUID, guid)
-    name, realm = ns.Plain(name), ns.Plain(realm)
-    if not ok or type(name) ~= "string" or name == "" then return nil end
-    if realm == "" then realm = nil end
-    return name, realm
+    local unit = UnitTokenFromGUID and ns.Plain(UnitTokenFromGUID(guid))
+    local fullName = unit and ns.FullNameOfUnit(unit)
+    if fullName then return fullName end
+    local ok, _, _, _, _, _, firstName, lastName = pcall(GetPlayerInfoByGUID, guid)
+    firstName, lastName = ns.Plain(firstName), ns.Plain(lastName)
+    if not ok or type(firstName) ~= "string" or firstName == "" then return nil end
+    if type(lastName) ~= "string" or lastName == "" then return firstName end
+    return firstName .. " " .. lastName
 end
 
 -- The units of your group: "player" and "party1".."party4", or "raid1".."raid40" in a raid.
@@ -49,7 +54,7 @@ end
 -- The group member whose pet has this GUID, or nil.
 local function GroupPetOwner(petGUID)
     for _, unit in ipairs(GroupUnits()) do
-        if ns.Plain(UnitGUID(unit .. "pet")) == petGUID then return ns.Plain(UnitName(unit)) end
+        if ns.Plain(UnitGUID(unit .. "pet")) == petGUID then return ns.FullNameOfUnit(unit) end
     end
     return nil
 end
@@ -58,8 +63,8 @@ end
 local function KillerFromGUID(attackerGUID)
     local guid = ns.Plain(attackerGUID)
     if type(guid) ~= "string" then return nil end
-    if guid == UnitGUID("player") or guid == UnitGUID("pet") then return UnitName("player"), true end
-    local killerName = PlayerNameFromGUID(guid)
+    if guid == UnitGUID("player") or guid == UnitGUID("pet") then return ns.MyFullName(), true end
+    local killerName = PlayerFullNameFromGUID(guid)
     if killerName then return killerName, false end
     return GroupPetOwner(guid), false
 end
@@ -119,7 +124,7 @@ local function PostInGuildChat(text)
 end
 
 -- Counts a kill this copy saw and, for a guild-list name, tells the guild about it.
-local function TellKill(entry, killerName, victimName, victimRealm)
+local function TellKill(entry, killerName, victimFullName)
     local place = ns.CurrentPlace()
     local count = CountKill(entry.key, killerName, place, entry.inGuildList)
     if not count then return end
@@ -132,7 +137,7 @@ local function TellKill(entry, killerName, victimName, victimRealm)
     local text = Kills.Text(entry.name, killerName, place, count, killerCount)
     local isPosted = ns.settings.announceKills and PostInGuildChat(text) or false
     if not isPosted then ns:Print(text) end
-    ns.Share.AnnounceKill(victimName, victimRealm, killerName, place, count, killerCount, isPosted)
+    ns.Share.AnnounceKill(victimFullName, killerName, place, count, killerCount, isPosted)
 end
 
 -- Your place in the stand-in order: the group members in your guild, minus the killer, sorted
@@ -142,7 +147,7 @@ local function StandInRank(killerName)
     local names = {}
     local isAdded = {}
     for _, unit in ipairs(GroupUnits()) do
-        local name = ns.Plain(UnitName(unit))
+        local name = ns.FullNameOfUnit(unit)
         local isGuildMember = unit == "player" or ns.Plain(UnitIsInMyGuild(unit)) == true
         if name and name ~= killerName and not isAdded[name] and isGuildMember then
             isAdded[name] = true
@@ -150,7 +155,7 @@ local function StandInRank(killerName)
         end
     end
     table.sort(names)
-    local myName = UnitName("player")
+    local myName = ns.MyFullName()
     for rank, name in ipairs(names) do
         if name == myName then return rank - 1 end
     end
@@ -163,11 +168,11 @@ end
 
 -- A group member's kill: their own copy of the addon tells the guild if they have one. If
 -- nobody has when this copy's turn comes, this copy does.
-local function TellKillLater(entry, killerName, victimName, victimRealm)
+local function TellKillLater(entry, killerName, victimFullName)
     local delay = STAND_IN_FIRST + StandInRank(killerName) * STAND_IN_STEP
     C_Timer.After(delay, function()
         if WasToldRecently(entry.key) then return end
-        TellKill(entry, killerName, victimName, victimRealm)
+        TellKill(entry, killerName, victimFullName)
     end)
 end
 
@@ -198,24 +203,27 @@ end
 
 ns:On("PARTY_KILL", function(attackerGUID, targetGUID)
     if not ns.db then return end
-    local victimName, victimRealm = PlayerNameFromGUID(targetGUID)
-    if not victimName then return end
-    local entry = ns.FindEntry(victimName, victimRealm)
+    local victimFullName = PlayerFullNameFromGUID(targetGUID)
+    if not victimFullName then return end
+    local entry = ns.FindEntry(ns.SplitName(victimFullName))
     if not entry then return end
     local killerName, isMyKill = KillerFromGUID(attackerGUID)
     if not killerName then return end
     if isMyKill then
-        TellKill(entry, killerName, victimName, victimRealm)
+        TellKill(entry, killerName, victimFullName)
     else
-        TellKillLater(entry, killerName, victimName, victimRealm)
+        TellKillLater(entry, killerName, victimFullName)
     end
 end)
 
--- "[KOS] Ola drepte Forræder ...": a kill someone already told in guild chat. A stand-in
--- waiting to tell the same kill stays quiet.
+-- "[KOS] Ola Nordmann drepte Nektarion Stormhoof i Ashenvale! ...": a kill someone already
+-- told in guild chat. A stand-in waiting to tell the same kill stays quiet. The victim is the
+-- one or two words after "drepte"; a second word "i" starts the place instead.
 ns:On("CHAT_MSG_GUILD", function(text)
     text = ns.Plain(text)
     if type(text) ~= "string" or text:sub(1, #GUILD_CHAT_TAG) ~= GUILD_CHAT_TAG then return end
-    local victimName = text:match(" drepte ([^%s!]+)")
-    if victimName then lastToldAt[ns.KeyFromFullName(victimName)] = GetTime() end
+    local firstName, secondWord = text:match(" drepte ([^%s!]+) ?([^%s!]*)")
+    if not firstName then return end
+    local lastName = (secondWord ~= "" and secondWord ~= "i") and secondWord or nil
+    lastToldAt[ns.NameKey(firstName, lastName)] = GetTime()
 end)

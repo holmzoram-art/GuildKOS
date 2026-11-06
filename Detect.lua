@@ -26,9 +26,9 @@ local CHAT_SOURCES = {
 -- is noted at most every SEEN_NOTE_INTERVAL seconds. The alert, and telling the guild, waits
 -- alertPause seconds between two for the same name, so someone running in and out of
 -- nameplate range doesn't set it off again and again.
-local function HandleSighting(name, realm, howSeen)
+local function HandleSighting(firstName, lastName, howSeen)
     if not ns.db then return nil end
-    local entry = ns.FindEntry(name, realm)
+    local entry = ns.FindEntry(firstName, lastName)
     if not entry then return nil end
     ns.Nearby.Note(entry, howSeen)
     local now = GetTime()
@@ -41,17 +41,18 @@ local function HandleSighting(name, realm, howSeen)
     lastAlertAt[entry.key] = now
     ns.Alert.Show(entry, howSeen)
     if entry.inGuildList and ns.settings.shareSightings then
-        ns.Share.AnnounceSighting(name, realm, place)
+        ns.Share.AnnounceSighting(ns.DisplayName(firstName, lastName), place)
     end
     return entry
 end
 
+-- On WoW Forever, UnitName gives the first and the last name (see Core.lua).
 local function CheckUnit(unit, howSeen)
     if not ns.Plain(UnitIsPlayer(unit)) then return nil end
-    local name, realm = UnitName(unit)
-    name, realm = ns.Plain(name), ns.Plain(realm)
-    if not name or name == "" or name == UNKNOWNOBJECT then return nil end
-    return HandleSighting(name, realm, howSeen)
+    local fullName = ns.FullNameOfUnit(unit)
+    if not fullName then return nil end
+    local firstName, lastName = ns.SplitName(fullName)
+    return HandleSighting(firstName, lastName, howSeen)
 end
 
 local function CheckNameplate(unit)
@@ -110,8 +111,9 @@ for eventName, howSeen in pairs(CHAT_SOURCES) do
     ns:On(eventName, function(_, sender)
         sender = ns.Plain(sender)
         if type(sender) ~= "string" or sender == "" then return end
-        local name, realm = ns.SplitName(sender)
-        HandleSighting(name, realm, howSeen)
+        local firstName, lastName = ns.SplitName(sender)
+        if not ns.IsValidFullName(firstName, lastName) then return end
+        HandleSighting(firstName, lastName, howSeen)
     end)
 end
 

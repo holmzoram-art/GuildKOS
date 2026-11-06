@@ -3,10 +3,10 @@ local _, ns = ...
 
 local HELP_LINES = {
     "/kos: åpne eller lukk vinduet",
-    "/kos add Navn [grunn]: legg til på din egen liste",
-    "/kos remove Navn: fjern fra din egen liste",
-    "/kos guild add Navn [grunn]: legg til på guildlista",
-    "/kos guild remove Navn: fjern fra guildlista",
+    "/kos add Fornavn Etternavn [- grunn]: legg til på din egen liste",
+    "/kos remove Fornavn Etternavn: fjern fra din egen liste",
+    "/kos guild add Fornavn Etternavn [- grunn]: legg til på guildlista",
+    "/kos guild remove Fornavn Etternavn: fjern fra guildlista",
     "/kos export eller /kos import: del lista som tekst",
     "/kos sync: sammenlign lista med guilden nå",
     "/kos list: skriv hele lista i chat",
@@ -71,7 +71,7 @@ local function RunGuildCommand(arguments)
     local action, rest = FirstWord(arguments)
     action = action:lower()
     if action == "add" then
-        local fullName, reason = FirstWord(rest)
+        local fullName, reason = ns.SplitNameAndReason(rest)
         local shown, problem = ns.Sync.Add(fullName, reason)
         Report(shown, problem, "%s er lagt til på guildlista.")
     elseif action == "remove" then
@@ -93,7 +93,7 @@ end
 local COMMANDS = {
     [""] = function() ns.UI.Toggle() end,
     add = function(arguments)
-        local fullName, reason = FirstWord(arguments)
+        local fullName, reason = ns.SplitNameAndReason(arguments)
         local shown, problem = ns.AddPersonal(fullName, reason)
         Report(shown, problem, "%s er lagt til på din liste.")
     end,

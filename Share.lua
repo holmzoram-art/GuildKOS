@@ -1,7 +1,7 @@
 -- Hidden addon messages between guild members who have the addon, on the guild channel.
 -- A message is fields joined by tabs, and the first field says what it is:
---   S1  Name-Realm, place                    someone from the guild list was seen there
---   K1  Name-Realm, killer, place, kills of that name, the killer's KOS kills, 1 or 0
+--   S1  name, place                          someone from the guild list was seen there
+--   K1  name, killer, place, kills of that name, the killer's KOS kills, 1 or 0
 --                                            someone from the guild list was killed; the last
 --                                            field is 1 when guild chat already said so
 --   E1, H1, D1, D2                           the guild list (Sync.lua)
@@ -162,7 +162,7 @@ function Share.CleanText(text)
 end
 
 -- `handler(fields, sender)` runs for each message whose first field is `kind`. `sender` is
--- the "Name-Realm" of the guild member who sent it.
+-- the name of the guild member who sent it ("First Last" on WoW Forever).
 function Share.OnMessage(kind, handler)
     handlersByKind[kind] = handler
 end
@@ -177,9 +177,9 @@ end
 
 -- The guild-list entry a message names, or nil when the name isn't on our guild list.
 local function GuildEntryFor(fullName)
-    local name, realm = ns.SplitName(fullName or "")
-    if not ns.IsValidName(name) then return nil end
-    local entry = ns.FindEntry(name, realm)
+    local firstName, lastName = ns.SplitName(fullName)
+    if not ns.IsValidFullName(firstName, lastName) then return nil end
+    local entry = ns.FindEntry(firstName, lastName)
     if not (entry and entry.inGuildList) then return nil end
     return entry
 end
@@ -188,15 +188,15 @@ end
 -- Sightings and kills
 --------------------------------------------------------------------------------
 
-function Share.AnnounceSighting(name, realm, place)
-    local fullName = name .. "-" .. (realm or ns.OwnRealm())
+-- Names go as "First Last" (or just "First" for a character without a last name).
+function Share.AnnounceSighting(fullName, place)
     Share.SendNow({ SIGHTING, fullName, (place or ""):sub(1, MAX_PLACE_BYTES) })
 end
 
-function Share.AnnounceKill(victimName, victimRealm, killerName, place, count, killerCount, isPostedInChat)
+function Share.AnnounceKill(victimFullName, killerName, place, count, killerCount, isPostedInChat)
     Share.SendFirst({
         KILL,
-        victimName .. "-" .. (victimRealm or ns.OwnRealm()),
+        victimFullName,
         killerName,
         (place or ""):sub(1, MAX_PLACE_BYTES),
         tostring(count),
@@ -221,14 +221,15 @@ end)
 Share.OnMessage(KILL, function(fields)
     local entry = GuildEntryFor(fields[2])
     local killerName = Share.CleanText(fields[3])
-    if not entry or not ns.IsValidName(killerName) then return end
+    if not entry or not ns.IsValidFullName(ns.SplitName(killerName)) then return end
     ns.Kills.TakeReport(entry, killerName, Share.CleanText(fields[4]), fields[5], fields[6], fields[7] == "1")
 end)
 
 ns:On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
     prefix, text, channel, sender = ns.Plain(prefix), ns.Plain(text), ns.Plain(channel), ns.Plain(sender)
     if prefix ~= PREFIX or channel ~= "GUILD" or type(text) ~= "string" or type(sender) ~= "string" then return end
-    if Ambiguate(sender, "none") == UnitName("player") then return end
+    -- Our own messages come back to us too. On WoW Forever the sender reads "First Last".
+    if ns.IsMe(sender) then return end
     local fields = SplitFields(text)
     local handler = handlersByKind[fields[1]]
     if handler then handler(fields, sender) end

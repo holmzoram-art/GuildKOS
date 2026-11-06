@@ -9,11 +9,17 @@ En addon for WoW Forever. Du legger inn navn, og når en av dem er i nærheten f
   `/kos`-vinduet for å få det fram, og dra det dit du vil ha det.
 - blinkende ikon på oppgavelinja hvis spillet ligger i bakgrunnen
 
-Første gang addonen lastes, står «Nektarion» på lista di med grunnen «Test», så du kan prøve varslene
-med en gang. Fjern navnet med X-en når du er ferdig; det kommer ikke tilbake.
+Første gang addonen lastes, står «Nektarion Stormhoof» på lista di med grunnen «Test», så du kan
+prøve varslene med en gang. Fjern navnet med X-en når du er ferdig; det kommer ikke tilbake.
 
 Hold musa over et navn i lista for å se alt om det: grunn, drap, hvor og når det sist ble sett, og
 hvem som la det til.
+
+## Navn
+
+I WoW Forever har alle karakterer fornavn og etternavn. Skriv begge, for eksempel
+«Nektarion Stormhoof». Fornavn alene er ikke unikt: skriver du bare «Nektarion», varsler addonen på
+alle som heter Nektarion, uansett etternavn. Store og små bokstaver spiller ingen rolle.
 
 ## Guildlista
 
@@ -42,8 +48,8 @@ den med Ctrl+C og lim den inn på Discord som backup. For å lese en liste inn i
 samme vindu og trykk «Til guildlista» eller «Til min liste».
 
 ```
-Forræder - Gikk alliance
-Sviker
+Nektarion Stormhoof - Gikk alliance
+Sviker Svikersen
 ```
 
 ## Guilden får beskjed
@@ -85,10 +91,10 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | Kommando | Hva den gjør |
 |---|---|
 | `/kos` | åpner eller lukker vinduet |
-| `/kos add Navn [grunn]` | legger navnet til på din liste |
-| `/kos remove Navn` | fjerner navnet fra din liste |
-| `/kos guild add Navn [grunn]` | legger navnet til på guildlista |
-| `/kos guild remove Navn` | fjerner navnet fra guildlista |
+| `/kos add Fornavn Etternavn - grunn` | legger navnet til på din liste |
+| `/kos remove Fornavn Etternavn` | fjerner navnet fra din liste |
+| `/kos guild add Fornavn Etternavn - grunn` | legger navnet til på guildlista |
+| `/kos guild remove Fornavn Etternavn` | fjerner navnet fra guildlista |
 | `/kos list` | skriver hele lista i chat, med antall drap |
 | `/kos top` | viser hvem i guilden som har flest KOS-drap |
 | `/kos export` eller `/kos import` | åpner vinduet for å dele lista som tekst |

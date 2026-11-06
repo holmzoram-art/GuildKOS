@@ -1,7 +1,7 @@
 -- A window for moving the KOS list in and out of the game as plain text: copy it to Discord
--- as a backup or to share it, and paste a list back in. One name per line, with an optional
--- reason after a dash:
---     Forræder - Gikk alliance
+-- as a backup or to share it, and paste a list back in. One name per line (first and last
+-- name, or only the first), with an optional reason after " - " or ":" (ns.SplitNameAndReason):
+--     Nektarion Stormhoof - Gikk alliance
 --     Sviker
 -- Empty lines and lines that start with "#" are skipped.
 local _, ns = ...
@@ -18,8 +18,6 @@ local HELP_TOP = -46
 local TEXT_BOTTOM = 52 -- room for the buttons under the text box
 local TEXT_INSET = 8
 local SCROLLBAR_SPACE = 24
--- What may stand between a name and its reason: "-", ":" or "–" (an en dash, 3 bytes in UTF-8).
-local REASON_SEPARATORS = { "^%-+%s*", "^:%s*", "^\226\128\147%s*" }
 
 local HELP_TEXT = "Eksport: Teksten er allerede markert. Trykk Ctrl+C og lim den inn der du vil, "
     .. "for eksempel på Discord.\n"
@@ -40,22 +38,12 @@ local function ExportText()
     return table.concat(lines, "\n")
 end
 
-local function StripSeparator(text)
-    for _, pattern in ipairs(REASON_SEPARATORS) do
-        local stripped = text:gsub(pattern, "", 1)
-        if stripped ~= text then return stripped end
-    end
-    return text
-end
-
 -- Adds the name on one pasted line to `items` as { fullName, reason }.
 local function ReadLine(line, items)
     local trimmed = line:match("^%s*(.-)%s*$")
     if trimmed == "" or trimmed:sub(1, 1) == "#" then return end
-    -- The name ends at a space or a ":", so "Navn: grunn" works as well as "Navn - grunn".
-    local fullName, rest = trimmed:match("^([^%s:]+)%s*(.-)$")
-    if not fullName then return end
-    table.insert(items, { fullName = fullName, reason = StripSeparator(rest) })
+    local fullName, reason = ns.SplitNameAndReason(trimmed)
+    table.insert(items, { fullName = fullName, reason = reason })
 end
 
 local function ReadPastedText(text)
