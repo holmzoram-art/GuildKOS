@@ -52,9 +52,10 @@ local function HandleSighting(firstName, lastName, howSeen)
     if lastAlertAt[entry.key] and now - lastAlertAt[entry.key] < ns.settings.alertPause then return entry end
     lastAlertAt[entry.key] = now
     ns.Alert.Show(entry, howSeen)
-    if entry.inGuildList and ns.settings.shareSightings then
-        ns.Share.AnnounceSighting(ns.DisplayName(firstName, lastName), place)
-    end
+    -- The name goes as it stands on the list, so every copy finds the same entry. Names that
+    -- are only on your own list are never shared.
+    local shouldShare = entry.inGuildList and ns.settings.shareSightings
+    ns.Share.ReportOwnSighting(entry.key, entry.name, place, shouldShare)
     return entry
 end
 

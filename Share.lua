@@ -27,7 +27,7 @@ local THROTTLE_RETRY = 10    -- seconds to wait after the game says we send too 
 local URGENT_MAX = 10        -- sightings and kills waiting to go
 local EDITS_MAX = 2000       -- list changes waiting to go (an import of a very long list)
 local MAX_MESSAGE_BYTES = 255 -- the game's limit for one addon message
-local REPORT_PAUSE = 120     -- seconds before the same name's guild report shows again
+local REPORT_PAUSE = 600     -- seconds; a name is reported to (and shown from) the guild once in this time
 local MAX_PLACE_BYTES = 100  -- keeps a message well under MAX_MESSAGE_BYTES
 
 -- Each waiting message is { text, skipIf }; skipIf, when there, is asked just before sending
@@ -38,7 +38,7 @@ local listOutbox = {}
 local OUTBOXES = { urgentOutbox, editOutbox, listOutbox }
 
 local isSending = false
-local lastReportAt = {}    -- key -> GetTime() of the last guild report printed for it
+local lastReportAt = {}    -- key -> GetTime() the name was last reported: by you, or heard from the guild
 local handlersByKind = {}  -- "S1" -> function(fields, sender)
 
 -- Whether the game blocks addon messages right now (boss fights, some instances). Only a
@@ -188,8 +188,19 @@ end
 -- Sightings and kills
 --------------------------------------------------------------------------------
 
--- Names go as "First Last" (or just "First" for a character without a last name).
-function Share.AnnounceSighting(fullName, place)
+-- No spam: the guild hears about a name at most once per REPORT_PAUSE, whoever sees it. A
+-- report heard from the guild, or your own alert, starts that time again.
+local function WasReportedRecently(key)
+    return lastReportAt[key] ~= nil and GetTime() - lastReportAt[key] < REPORT_PAUSE
+end
+
+-- Your own alert for a listed name. Tells the guild when `shouldShare` is set and the guild
+-- hasn't heard about the name lately, and keeps the guild's reports of it quiet for a while,
+-- since you know already. Names go as "First Last" (or just "First").
+function Share.ReportOwnSighting(key, fullName, place, shouldShare)
+    local wasReported = WasReportedRecently(key)
+    lastReportAt[key] = GetTime()
+    if not shouldShare or wasReported then return end
     Share.SendNow({ SIGHTING, fullName, (place or ""):sub(1, MAX_PLACE_BYTES) })
 end
 
@@ -211,10 +222,9 @@ Share.OnMessage(SIGHTING, function(fields, sender)
     local reporter = Ambiguate(sender, "guild")
     local place = Share.CleanText(fields[3])
     ns.NoteLastSeen(entry.key, place, reporter)
-    if not ns.settings.showGuildReports then return end
-    local now = GetTime()
-    if lastReportAt[entry.key] and now - lastReportAt[entry.key] < REPORT_PAUSE then return end
-    lastReportAt[entry.key] = now
+    local wasReported = WasReportedRecently(entry.key)
+    lastReportAt[entry.key] = GetTime()
+    if wasReported or not ns.settings.showGuildReports then return end
     ns:Print(("|cffff5050%s|r sett av %s: %s"):format(entry.name, reporter, place ~= "" and place or "?"))
 end)
 

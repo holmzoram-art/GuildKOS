@@ -18,6 +18,7 @@ local GUILD_CHAT_TAG = "[KOS] "
 local STAND_IN_FIRST = 1.5        -- seconds before the first stand-in tells a group member's kill
 local STAND_IN_STEP = 1.5         -- seconds more for each stand-in ahead of you in the order
 local SAME_KILL_SECONDS = 30      -- reports of one name's death this close together are one kill
+local GUILD_CHAT_PAUSE = 600      -- seconds; a name's kills reach guild chat once in this time
 local MAX_REPORTED_COUNT = 100000 -- a count from another copy above this is ignored
 
 local lastKillAt = {}  -- key -> GetTime() of the last kill counted for that name
@@ -123,8 +124,14 @@ local function PostInGuildChat(text)
     return (pcall(sendChatMessage, GUILD_CHAT_TAG .. text, "GUILD"))
 end
 
--- Counts a kill this copy saw and, for a guild-list name, tells the guild about it.
-local function TellKill(entry, killerName, victimFullName)
+local function WasToldWithin(key, seconds)
+    return lastToldAt[key] ~= nil and GetTime() - lastToldAt[key] < seconds
+end
+
+-- Counts a kill this copy saw and, for a guild-list name, tells the guild about it. No spam:
+-- a name killed again within GUILD_CHAT_PAUSE is counted, but guild chat only hears it once,
+-- and the other copies don't print it either.
+local function TellKill(entry, killerName)
     local place = ns.CurrentPlace()
     local count = CountKill(entry.key, killerName, place, entry.inGuildList)
     if not count then return end
@@ -135,9 +142,13 @@ local function TellKill(entry, killerName, victimFullName)
     end
     local killerCount = ns.db.killerCounts[killerName]
     local text = Kills.Text(entry.name, killerName, place, count, killerCount)
-    local isPosted = ns.settings.announceKills and PostInGuildChat(text) or false
+    local isQuiet = WasToldWithin(entry.key, GUILD_CHAT_PAUSE)
+    local isPosted = false
+    if ns.settings.announceKills and not isQuiet then isPosted = PostInGuildChat(text) end
+    if isPosted then lastToldAt[entry.key] = GetTime() end
     if not isPosted then ns:Print(text) end
-    ns.Share.AnnounceKill(victimFullName, killerName, place, count, killerCount, isPosted)
+    -- The name goes as it stands on the list, so every copy finds the same entry.
+    ns.Share.AnnounceKill(entry.name, killerName, place, count, killerCount, isPosted or isQuiet)
 end
 
 -- Your place in the stand-in order: the group members in your guild, minus the killer, sorted
@@ -162,17 +173,13 @@ local function StandInRank(killerName)
     return 0
 end
 
-local function WasToldRecently(key)
-    return lastToldAt[key] ~= nil and GetTime() - lastToldAt[key] < SAME_KILL_SECONDS
-end
-
 -- A group member's kill: their own copy of the addon tells the guild if they have one. If
 -- nobody has when this copy's turn comes, this copy does.
-local function TellKillLater(entry, killerName, victimFullName)
+local function TellKillLater(entry, killerName)
     local delay = STAND_IN_FIRST + StandInRank(killerName) * STAND_IN_STEP
     C_Timer.After(delay, function()
-        if WasToldRecently(entry.key) then return end
-        TellKill(entry, killerName, victimFullName)
+        if WasToldWithin(entry.key, SAME_KILL_SECONDS) then return end
+        TellKill(entry, killerName)
     end)
 end
 
@@ -205,14 +212,20 @@ ns:On("PARTY_KILL", function(attackerGUID, targetGUID)
     if not ns.db then return end
     local victimFullName = PlayerFullNameFromGUID(targetGUID)
     if not victimFullName then return end
-    local entry = ns.FindEntry(ns.SplitName(victimFullName))
+    local victimFirst, victimLast = ns.SplitName(victimFullName)
+    local entry
+    if victimLast then
+        entry = ns.FindEntry(victimFirst, victimLast)
+    else
+        entry = ns.FindEntryByFirstName(victimFirst)
+    end
     if not entry then return end
     local killerName, isMyKill = KillerFromGUID(attackerGUID)
     if not killerName then return end
     if isMyKill then
-        TellKill(entry, killerName, victimFullName)
+        TellKill(entry, killerName)
     else
-        TellKillLater(entry, killerName, victimFullName)
+        TellKillLater(entry, killerName)
     end
 end)
 

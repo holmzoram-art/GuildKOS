@@ -58,6 +58,9 @@ Når noen ser et navn fra guildlista, får de andre i guilden med addonen en lin
 «Forræder sett av Ola: The Crossroads, The Barrens». Lista i vinduet viser også hvor og når hvert
 navn sist ble sett. Begge deler kan slås av.
 
+Ingen spam: guilden hører om samme navn høyst én gang per 10 minutter, uansett hvor mange som ser
+ham. Har du selv fått varsel på ham, får du heller ikke guildens melding om ham i den tiden.
+
 ## Drap blir kunngjort og telt
 
 Når du eller noen i gruppa di dreper et navn fra guildlista, skriver addonen det i guildchat:
@@ -70,7 +73,9 @@ Når du eller noen i gruppa di dreper et navn fra guildlista, skriver addonen de
 - Addonen teller hvor mange ganger hvert navn er drept, og hvor mange KOS-drap hver i guilden har.
   `/kos top` viser topplista, og lista i vinduet viser «Drept 3 ganger, sist av Ola».
 - Et drap fra petten din teller som ditt.
-- Har en i gruppa di ikke addonen, kunngjør din addon drapet for dem.
+- Har en i gruppa di ikke addonen, kunngjør din addon drapet for dem. Det kommer bare én melding.
+- Ingen spam: blir samme navn drept igjen innen 10 minutter, telles drapet, men guildchat får bare
+  den første meldingen.
 - Drap på navn som bare står på din egen liste blir telt, men bare du får se dem.
 - Kunngjøringen kan slås av i vinduet.
 
