@@ -38,6 +38,7 @@ local DEFAULT_SETTINGS = {
     announceKills = true,    -- say in guild chat when you kill someone from the guild list
     longNameplates = false,  -- show nameplates as far away as the game allows (Detect.lua)
     watchFriends = true,     -- alert when a Battle.net friend on a list is in your zone (Friends.lua)
+    addToPersonal = false,   -- the /kos window adds names to your own list instead of the guild's
     alertPause = 60,         -- seconds before the same name can alert again
 }
 
@@ -207,6 +208,12 @@ end
 
 function ns.MyFullName()
     return ns.FullNameOfUnit("player") or UnitName("player")
+end
+
+-- Your target's "First Last" when it is a player, or nil.
+function ns.TargetFullName()
+    if not ns.Plain(UnitIsPlayer("target")) then return nil end
+    return ns.FullNameOfUnit("target")
 end
 
 -- Whether a sender name ("First Last", maybe with "-Realm") is you. A sender given with only

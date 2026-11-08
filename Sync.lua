@@ -248,6 +248,23 @@ local function SendWholeList()
     ns.Share.SendList(messages)
 end
 
+-- "Synk nå": sends your whole guild list to everyone online with the addon. Each copy that
+-- hears it to the end sends back what it lacked (see LIST_END below), so both ways are
+-- covered. Returns how many names were sent, or nil and why not.
+local PUSH_COOLDOWN = 30 -- seconds between two pushes, so the button can't flood the guild
+local lastPushAt = -math.huge
+
+function Sync.PushAll()
+    local entries = ns.SyncedEntries()
+    if not entries then return nil, "Du er ikke med i en guild." end
+    local secondsLeft = math.ceil(PUSH_COOLDOWN - (GetTime() - lastPushAt))
+    if secondsLeft > 0 then return nil, ("Vent %d sekunder før du synker igjen."):format(secondsLeft) end
+    lastPushAt = GetTime()
+    ForgetOldTombstones(entries)
+    SendWholeList()
+    return (Sync.Counts())
+end
+
 -- Skips sending an entry when another copy has sent the same version (or a newer one) since.
 local function AlreadySentBySomeone(key, entry)
     return function()

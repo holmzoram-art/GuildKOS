@@ -3,12 +3,11 @@ local addonName, ns = ...
 
 local HELP_LINES = {
     "/kos: åpne eller lukk vinduet",
-    "/kos add Fornavn Etternavn [grunn]: legg til på din egen liste",
+    "/kos add Fornavn Etternavn [grunn]: legg til på din egen liste (uten navn: target-en din)",
     "/kos remove Fornavn Etternavn: fjern fra din egen liste",
-    "/kos guild add Fornavn Etternavn [grunn]: legg til på guildlista",
+    "/kos guild add Fornavn Etternavn [grunn]: legg til på guildlista (uten navn: target-en din)",
     "/kos guild remove Fornavn Etternavn: fjern fra guildlista",
-    "/kos export eller /kos import: del lista som tekst",
-    "/kos sync: sammenlign lista med guilden nå",
+    "/kos sync: send hele guildlista til alle med addonen nå",
     "/kos status: guild, lister, synk og hvem addonen hører fra",
     "/kos list: skriv hele lista i chat",
     "/kos top: hvem i guilden har flest KOS-drap",
@@ -123,13 +122,25 @@ local function PrintHelp()
     end
 end
 
+-- The name and reason typed after "add", or your target when nothing is typed.
+local function NameAndReason(arguments)
+    if arguments ~= "" then return ns.SplitNameAndReason(arguments) end
+    local targetName = ns.TargetFullName()
+    if not targetName then return nil, nil, "Skriv et navn, eller ta en spiller i target først." end
+    return targetName, nil
+end
+
 local function RunGuildCommand(arguments)
     local action, rest = FirstWord(arguments)
     action = action:lower()
     if action == "add" then
-        local fullName, reason = ns.SplitNameAndReason(rest)
-        local shown, problem = ns.Sync.Add(fullName, reason)
-        Report(shown, problem, "%s er lagt til på guildlista.")
+        local fullName, reason, problem = NameAndReason(rest)
+        if not fullName then
+            ns:Print(problem)
+            return
+        end
+        local shown, addProblem = ns.Sync.Add(fullName, reason)
+        Report(shown, addProblem, "%s er lagt til på guildlista.")
     elseif action == "remove" then
         local shown, problem = ns.Sync.Remove(ns.KeyFromFullName(rest))
         Report(shown, problem, "%s er fjernet fra guildlista.")
@@ -138,20 +149,27 @@ local function RunGuildCommand(arguments)
     end
 end
 
-local function StartSync()
-    if ns.Sync.SayHello() then
-        ns:Print("Sammenligner lista med guilden. Det kan ta litt tid hvis den er lang.")
-    else
-        ns:Print("Du er ikke med i en guild, eller spillet har ikke lastet guilden ennå.")
+-- The same as the "Synk nå" button.
+local function SyncNow()
+    local nameCount, problem = ns.Sync.PushAll()
+    if not nameCount then
+        ns:Print(problem)
+        return
     end
+    ns:Print(("Sender guildlista (%d navn) til alle med addonen. De sender tilbake det du mangler.")
+        :format(nameCount))
 end
 
 local COMMANDS = {
     [""] = function() ns.UI.Toggle() end,
     add = function(arguments)
-        local fullName, reason = ns.SplitNameAndReason(arguments)
-        local shown, problem = ns.AddPersonal(fullName, reason)
-        Report(shown, problem, "%s er lagt til på din liste.")
+        local fullName, reason, problem = NameAndReason(arguments)
+        if not fullName then
+            ns:Print(problem)
+            return
+        end
+        local shown, addProblem = ns.AddPersonal(fullName, reason)
+        Report(shown, addProblem, "%s er lagt til på din liste.")
     end,
     remove = function(arguments)
         local shown, problem = ns.RemovePersonal(ns.KeyFromFullName(arguments))
@@ -160,9 +178,7 @@ local COMMANDS = {
     guild = RunGuildCommand,
     list = PrintList,
     top = PrintTopKillers,
-    export = function() ns.ExportImport.Show() end,
-    import = function() ns.ExportImport.Show() end,
-    sync = StartSync,
+    sync = SyncNow,
     status = PrintStatus,
     plates = function() ns.TurnOnEnemyNameplates() end,
     test = function() ns.Alert.Test() end,

@@ -1,7 +1,7 @@
--- The /kos window: add names, see every listed name with how often it was killed and where
--- it was last seen, and choose how alerts look and sound. The small building blocks at the
--- top (UI.CreateText, UI.CreateButton, UI.AddTooltip, the backdrops) are used by
--- ExportImport.lua too.
+-- The /kos window. At the top: one field for "Fornavn Etternavn grunn" and a button that adds
+-- your target. Under it: the guild list's state with a "Synk nå" button, then every listed
+-- name with how often it was killed and where it was last seen. The settings open in a panel
+-- beside the window ("Innstillinger").
 local _, ns = ...
 
 local UI = {}
@@ -9,37 +9,43 @@ ns.UI = UI
 
 local WINDOW_NAME = "GuildKOSWindow" -- a global name, so Escape can close the window
 local WINDOW_WIDTH = 420
-local WINDOW_HEIGHT = 580
+local WINDOW_HEIGHT = 476
 local EDGE = 22 -- space between the window's border and its content
 local CONTENT_WIDTH = WINDOW_WIDTH - 2 * EDGE
-local LIST_TOP = -178
-local LIST_HEIGHT = 200
+local ADD_TOP = -50
+local STATUS_TOP = -112
+local LIST_TOP = -164
+local LIST_HEIGHT = 260
 local LIST_INSET = 6        -- space inside the list's border
 local SCROLLBAR_SPACE = 24  -- room for the scroll bar at the list's right
 local LIST_WIDTH = CONTENT_WIDTH - 2 * LIST_INSET - SCROLLBAR_SPACE
 local ROW_HEIGHT = 32
-local OPTIONS_TOP = LIST_TOP - LIST_HEIGHT - 14
+local BOTTOM_TOP = LIST_TOP - LIST_HEIGHT - 12
+local SETTINGS_WIDTH = 250
+local SETTINGS_TOP = -48
 local CHECKBOX_SPACING = 24
 local ALERT_PAUSES = { 30, 60, 120, 300 } -- seconds, the choices behind the "Nytt varsel" button
 local REMOVE_POPUP = "GUILDKOS_REMOVE_FROM_GUILD_LIST"
+local NAME_HINT = "Fornavn Etternavn grunn"
 
 local GUILD_TAG = "|cff40ff40Guild|r"
 local PERSONAL_TAG = "|cff66b3ffMin|r"
 
-UI.WINDOW_BACKDROP = {
+local WINDOW_BACKDROP = {
     bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
     edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
     tile = true, tileSize = 32, edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
 }
 
-UI.LIST_BACKDROP = {
+local LIST_BACKDROP = {
     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
     tile = true, tileSize = 16, edgeSize = 16,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 }
 
+-- The checkboxes in the settings panel, top to bottom.
 local CHECKBOXES = {
     { key = "playSound", label = "Spill lyd" },
     { key = "flashScreen", label = "Blink rundt skjermkanten" },
@@ -68,7 +74,7 @@ local rows = {}
 --------------------------------------------------------------------------------
 
 -- `getText` is asked for the title and text each time the mouse comes over `frame`.
-function UI.AddTooltip(frame, getText)
+local function AddTooltip(frame, getText)
     frame:SetScript("OnEnter", function(self)
         local title, text = getText()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -79,13 +85,13 @@ function UI.AddTooltip(frame, getText)
     frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
-function UI.CreateText(parent, fontObject, text)
+local function CreateText(parent, fontObject, text)
     local fontString = parent:CreateFontString(nil, "OVERLAY", fontObject)
     if text then fontString:SetText(text) end
     return fontString
 end
 
-function UI.CreateButton(parent, width, text, onClick)
+local function CreateButton(parent, width, text, onClick)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetSize(width, 22)
     button:SetText(text)
@@ -95,54 +101,19 @@ function UI.CreateButton(parent, width, text, onClick)
     return button
 end
 
--- A movable window with a title and a close button. Escape closes it too.
-function UI.CreateWindow(globalName, width, height, titleText)
-    local frame = CreateFrame("Frame", globalName, UIParent, "BackdropTemplate")
-    frame:SetSize(width, height)
-    frame:SetPoint("CENTER")
-    frame:SetBackdrop(UI.WINDOW_BACKDROP)
-    frame:SetFrameStrata("DIALOG")
-    frame:SetClampedToScreen(true)
-    -- Two windows share the DIALOG layer; a top-level one comes in front of the other when
-    -- shown or clicked, so the other's buttons don't show (and catch clicks) through it.
-    frame:SetToplevel(true)
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:Hide()
-    table.insert(UISpecialFrames, globalName)
-
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -6, -6)
-    local title = UI.CreateText(frame, "GameFontNormalLarge", titleText)
-    title:SetPoint("TOP", 0, -18)
-    return frame
-end
-
-local function CreateInput(parent, width, labelText)
-    local input = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    input:SetSize(width, 22)
-    input:SetAutoFocus(false)
-    input:SetScript("OnEscapePressed", input.ClearFocus)
-    local label = UI.CreateText(input, "GameFontNormalSmall", labelText)
-    label:SetPoint("BOTTOMLEFT", input, "TOPLEFT", -4, 2)
-    return input
-end
-
+-- A checkbox for one setting. Clicking it saves the setting and tells the rest of the addon.
 local function CreateCheckbox(parent, option)
     local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     checkbox:SetSize(24, 24)
     checkbox.settingKey = option.key
-    local label = UI.CreateText(checkbox, "GameFontHighlightSmall", option.label)
+    local label = CreateText(checkbox, "GameFontHighlightSmall", option.label)
     label:SetPoint("LEFT", checkbox, "RIGHT", 2, 1)
     checkbox:SetScript("OnClick", function(self)
         ns.settings[option.key] = self:GetChecked() and true or false
         ns:Fire("KOS_SETTINGS_CHANGED")
     end)
     if option.tooltip then
-        UI.AddTooltip(checkbox, function() return option.label, option.tooltip end)
+        AddTooltip(checkbox, function() return option.label, option.tooltip end)
     end
     return checkbox
 end
@@ -151,41 +122,38 @@ end
 -- Adding and removing names
 --------------------------------------------------------------------------------
 
-local function ClearInputs()
+local function ClearInput()
     window.nameInput:SetText("")
-    window.reasonInput:SetText("")
     window.nameInput:ClearFocus()
-    window.reasonInput:ClearFocus()
 end
 
--- Runs `add(name, reason)` with what is typed in, and says how it went. A reason typed into
--- the name field after the name ("Fuma Xxxx gikk alliance") is used when the reason field is
--- empty.
-local function AddFromInputs(add, doneText)
-    local fullName, typedReason = ns.SplitNameAndReason(window.nameInput:GetText())
-    local reason = window.reasonInput:GetText()
-    if reason == "" then reason = typedReason end
+-- Adds to the guild list, or to your own list when "Bare på min liste" is ticked. Returns
+-- whether the name was added.
+local function AddName(fullName, reason)
+    local add, doneText = ns.Sync.Add, "%s er lagt til på guildlista."
+    if ns.settings.addToPersonal then add, doneText = ns.AddPersonal, "%s er lagt til på din liste." end
     local shown, problem = add(fullName, reason)
     if not shown then
         ns:Print(problem)
-        return
+        return false
     end
     ns:Print(doneText:format(shown))
-    ClearInputs()
+    return true
 end
 
-local function AddToPersonalList()
-    AddFromInputs(ns.AddPersonal, "%s er lagt til på din liste.")
+local function AddTyped()
+    local fullName, reason = ns.SplitNameAndReason(window.nameInput:GetText())
+    if AddName(fullName, reason) then ClearInput() end
 end
 
-local function AddToGuildList()
-    AddFromInputs(ns.Sync.Add, "%s er lagt til på guildlista.")
-end
-
--- The X on a row takes the name off your own list when it is there, otherwise off the
--- guild list.
-local function CanRemove(entry)
-    return entry.inPersonalList or (entry.inGuildList and ns.Sync.WhyCannotEdit() == nil)
+-- Adds your target. Whatever is typed in the field becomes the reason.
+local function AddTarget()
+    local fullName = ns.TargetFullName()
+    if not fullName then
+        ns:Print("Ta en spiller i target først.")
+        return
+    end
+    if AddName(fullName, window.nameInput:GetText()) then ClearInput() end
 end
 
 local function ReportRemoval(shown, problem)
@@ -207,6 +175,12 @@ StaticPopupDialogs[REMOVE_POPUP] = {
     hideOnEscape = true,
 }
 
+-- The X on a row takes the name off your own list when it is there, otherwise off the
+-- guild list.
+local function CanRemove(entry)
+    return entry.inPersonalList or (entry.inGuildList and ns.Sync.WhyCannotEdit() == nil)
+end
+
 local function RemoveEntry(entry)
     if entry.inPersonalList then
         ReportRemoval(ns.RemovePersonal(entry.key))
@@ -221,6 +195,17 @@ local function RemoveTooltipText(entry)
     end
     if entry.inPersonalList then return "Fjern fra din liste" end
     return "Fjern fra guildlista", "Fjerner navnet for hele guilden."
+end
+
+-- "Synk nå": sends the whole guild list to everyone online with the addon.
+local function SyncNow()
+    local nameCount, problem = ns.Sync.PushAll()
+    if not nameCount then
+        ns:Print(problem)
+        return
+    end
+    ns:Print(("Sender guildlista (%d navn) til alle med addonen. De sender tilbake det du mangler.")
+        :format(nameCount))
 end
 
 --------------------------------------------------------------------------------
@@ -296,11 +281,11 @@ local function CreateRow(index)
         stripe:SetColorTexture(1, 1, 1, 0.04)
     end
 
-    row.name = UI.CreateText(row, "GameFontNormal")
+    row.name = CreateText(row, "GameFontNormal")
     row.name:SetPoint("TOPLEFT", 6, -3)
-    row.source = UI.CreateText(row, "GameFontHighlightSmall")
+    row.source = CreateText(row, "GameFontHighlightSmall")
     row.source:SetPoint("LEFT", row.name, "RIGHT", 8, 0)
-    row.detail = UI.CreateText(row, "GameFontDisableSmall")
+    row.detail = CreateText(row, "GameFontDisableSmall")
     row.detail:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -2)
     row.detail:SetWidth(LIST_WIDTH - 40)
     row.detail:SetJustifyH("LEFT")
@@ -310,9 +295,9 @@ local function CreateRow(index)
     row.remove:SetSize(24, 24)
     row.remove:SetPoint("RIGHT", -2, 0)
     row.remove:SetScript("OnClick", function() RemoveEntry(row.entry) end)
-    UI.AddTooltip(row.remove, function() return RemoveTooltipText(row.entry) end)
+    AddTooltip(row.remove, function() return RemoveTooltipText(row.entry) end)
 
-    UI.AddTooltip(row, function() return row.entry.name, DetailLines(row.entry) end)
+    AddTooltip(row, function() return row.entry.name, DetailLines(row.entry) end)
     return row
 end
 
@@ -328,55 +313,100 @@ end
 -- The window
 --------------------------------------------------------------------------------
 
+local function CreateShell()
+    local frame = CreateFrame("Frame", WINDOW_NAME, UIParent, "BackdropTemplate")
+    frame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+    frame:SetPoint("CENTER")
+    frame:SetBackdrop(WINDOW_BACKDROP)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetClampedToScreen(true)
+    frame:SetToplevel(true)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:Hide()
+    table.insert(UISpecialFrames, WINDOW_NAME)
+
+    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", -6, -6)
+    local title = CreateText(frame, "GameFontNormalLarge", "Guild KOS")
+    title:SetPoint("TOP", 0, -18)
+    return frame
+end
+
+-- The grey "Fornavn Etternavn grunn" inside the empty field.
+local function UpdateHint(input)
+    input.hint:SetShown(input:GetText() == "" and not input:HasFocus())
+end
+
 local function CreateAddArea(frame)
-    frame.nameInput = CreateInput(frame, 150, "Fornavn Etternavn")
-    frame.nameInput:SetPoint("TOPLEFT", EDGE + 6, -62)
-    frame.nameInput:SetScript("OnEnterPressed", AddToPersonalList)
+    local addButton = CreateButton(frame, 96, "Legg til", AddTyped)
+    addButton:SetPoint("TOPRIGHT", -EDGE, ADD_TOP + 1)
 
-    frame.reasonInput = CreateInput(frame, CONTENT_WIDTH - 176, "Grunn")
-    frame.reasonInput:SetPoint("LEFT", frame.nameInput, "RIGHT", 18, 0)
-    frame.reasonInput:SetScript("OnEnterPressed", AddToPersonalList)
+    local input = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+    input:SetSize(CONTENT_WIDTH - 96 - 14, 22)
+    input:SetPoint("TOPLEFT", EDGE + 6, ADD_TOP)
+    input:SetAutoFocus(false)
+    input:SetScript("OnEnterPressed", AddTyped)
+    input:SetScript("OnEscapePressed", input.ClearFocus)
+    input.hint = CreateText(input, "GameFontDisableSmall", NAME_HINT)
+    input.hint:SetPoint("LEFT", 2, 0)
+    input:HookScript("OnTextChanged", UpdateHint)
+    input:HookScript("OnEditFocusGained", UpdateHint)
+    input:HookScript("OnEditFocusLost", UpdateHint)
+    frame.nameInput = input
 
-    local personalButton = UI.CreateButton(frame, CONTENT_WIDTH / 2 - 4, "Legg til på min liste", AddToPersonalList)
-    personalButton:SetPoint("TOPLEFT", EDGE, -94)
-    UI.AddTooltip(personalButton, function()
-        return "Min liste", "Bare for deg. Gjelder alle karakterene dine på denne kontoen."
-    end)
+    frame.personalCheck = CreateCheckbox(frame, {
+        key = "addToPersonal",
+        label = "Bare på min liste",
+        tooltip = "Navnet havner bare på din egen liste, og deles ikke med guilden.",
+    })
+    frame.personalCheck:SetPoint("TOPLEFT", EDGE, ADD_TOP - 26)
 
-    frame.guildButton = UI.CreateButton(frame, CONTENT_WIDTH / 2 - 4, "Legg til på guildlista", AddToGuildList)
-    frame.guildButton:SetPoint("TOPRIGHT", -EDGE, -94)
-    UI.AddTooltip(frame.guildButton, function()
-        local problem = ns.Sync.WhyCannotEdit()
-        local text = "Alle i guilden med addonen får navnet, også de som logger på senere."
-        if problem then text = text .. "\n\n|cffff6060" .. problem .. "|r" end
-        return "Guildlista", text
+    local targetButton = CreateButton(frame, 130, "Legg til target", AddTarget)
+    targetButton:SetPoint("TOPRIGHT", -EDGE, ADD_TOP - 27)
+    AddTooltip(targetButton, function()
+        return "Legg til target", "Legger spilleren du har i target på lista. Det du har skrevet i feltet, "
+            .. "blir grunnen."
     end)
 end
 
 local function CreateStatusArea(frame)
-    frame.status = UI.CreateText(frame, "GameFontHighlightSmall")
-    frame.status:SetPoint("TOPLEFT", EDGE, -124)
-    frame.status:SetWidth(CONTENT_WIDTH)
+    frame.syncButton = CreateButton(frame, 90, "Synk nå", SyncNow)
+    frame.syncButton:SetPoint("TOPRIGHT", -EDGE, STATUS_TOP + 2)
+    AddTooltip(frame.syncButton, function()
+        local text = "Sender hele guildlista til alle med addonen som er pålogget. De sender tilbake det du "
+            .. "mangler. Lista synkes også av seg selv når noen logger på."
+        local problem = ns.Sync.WhyCannotEdit()
+        if problem then text = text .. "\n\n|cffff6060" .. problem .. "|r" end
+        return "Synk nå", text
+    end)
+
+    frame.status = CreateText(frame, "GameFontHighlightSmall")
+    frame.status:SetPoint("TOPLEFT", EDGE, STATUS_TOP)
+    frame.status:SetWidth(CONTENT_WIDTH - 100)
     frame.status:SetJustifyH("LEFT")
 
-    frame.syncStatus = UI.CreateText(frame, "GameFontDisableSmall")
-    frame.syncStatus:SetPoint("TOPLEFT", EDGE, -139)
-    frame.syncStatus:SetWidth(CONTENT_WIDTH)
+    frame.syncStatus = CreateText(frame, "GameFontDisableSmall")
+    frame.syncStatus:SetPoint("TOPLEFT", EDGE, STATUS_TOP - 15)
+    frame.syncStatus:SetWidth(CONTENT_WIDTH - 100)
     frame.syncStatus:SetJustifyH("LEFT")
 
-    frame.plateWarning = UI.CreateText(frame, "GameFontNormalSmall",
+    frame.plateWarning = CreateText(frame, "GameFontNormalSmall",
         "|cffff8040Fiendtlige navneplater er av: varselet kommer senere.|r")
-    frame.plateWarning:SetPoint("TOPLEFT", EDGE, -156)
-    frame.plateButton = UI.CreateButton(frame, 70, "Slå på", ns.TurnOnEnemyNameplates)
+    frame.plateWarning:SetPoint("TOPLEFT", EDGE, STATUS_TOP - 34)
+    frame.plateButton = CreateButton(frame, 70, "Slå på", ns.TurnOnEnemyNameplates)
     frame.plateButton:SetHeight(18)
-    frame.plateButton:SetPoint("TOPRIGHT", -EDGE, -152)
+    frame.plateButton:SetPoint("TOPRIGHT", -EDGE, STATUS_TOP - 30)
 end
 
 local function CreateListArea(frame)
     local listBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     listBox:SetPoint("TOPLEFT", EDGE, LIST_TOP)
     listBox:SetSize(CONTENT_WIDTH, LIST_HEIGHT)
-    listBox:SetBackdrop(UI.LIST_BACKDROP)
+    listBox:SetBackdrop(LIST_BACKDROP)
     listBox:SetBackdropColor(0, 0, 0, 0.5)
 
     local scroll = CreateFrame("ScrollFrame", nil, listBox, "UIPanelScrollFrameTemplate")
@@ -387,11 +417,15 @@ local function CreateListArea(frame)
     frame.listContent:SetSize(LIST_WIDTH, 1)
     scroll:SetScrollChild(frame.listContent)
 
-    frame.emptyText = UI.CreateText(listBox, "GameFontDisable",
-        "Lista er tom.\n\nLegg til navn ovenfor, eller importer\nen liste med «Del lista».")
+    frame.emptyText = CreateText(listBox, "GameFontDisable",
+        "Lista er tom.\n\nSkriv et navn øverst, eller ta noen i target\nog trykk «Legg til target».")
     frame.emptyText:SetPoint("CENTER")
     frame.emptyText:SetWidth(LIST_WIDTH)
 end
+
+--------------------------------------------------------------------------------
+-- The settings panel
+--------------------------------------------------------------------------------
 
 local function CycleAlertPause()
     local current = ns.settings.alertPause
@@ -409,46 +443,58 @@ local function CycleSound()
     ns:Fire("KOS_SETTINGS_CHANGED")
 end
 
-local function CreateOptionsArea(frame)
-    local header = UI.CreateText(frame, "GameFontNormal", "Innstillinger")
-    header:SetPoint("TOPLEFT", EDGE, OPTIONS_TOP)
+-- A panel stuck to the window's right side, shown with "Innstillinger".
+local function CreateSettingsPanel(frame)
+    local panel = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    panel:SetSize(SETTINGS_WIDTH, WINDOW_HEIGHT)
+    panel:SetPoint("TOPLEFT", frame, "TOPRIGHT", -6, 0)
+    panel:SetBackdrop(WINDOW_BACKDROP)
+    panel:EnableMouse(true)
+    panel:Hide()
 
-    frame.checkboxes = {}
+    local title = CreateText(panel, "GameFontNormalLarge", "Innstillinger")
+    title:SetPoint("TOP", 0, -18)
+
+    panel.checkboxes = {}
     for index, option in ipairs(CHECKBOXES) do
-        local column = (index - 1) % 2
-        local line = math.floor((index - 1) / 2)
-        local checkbox = CreateCheckbox(frame, option)
-        checkbox:SetPoint("TOPLEFT", EDGE + column * (CONTENT_WIDTH / 2), OPTIONS_TOP - 16 - line * CHECKBOX_SPACING)
-        table.insert(frame.checkboxes, checkbox)
+        local checkbox = CreateCheckbox(panel, option)
+        checkbox:SetPoint("TOPLEFT", 18, SETTINGS_TOP - (index - 1) * CHECKBOX_SPACING)
+        table.insert(panel.checkboxes, checkbox)
     end
 
-    local buttonsTop = OPTIONS_TOP - 24 - math.ceil(#CHECKBOXES / 2) * CHECKBOX_SPACING
-    frame.soundButton = UI.CreateButton(frame, 124, "", CycleSound)
-    frame.soundButton:SetPoint("TOPLEFT", EDGE, buttonsTop)
-    UI.AddTooltip(frame.soundButton, function() return "Lyd", "Klikk for neste lyd. Du hører den med en gang." end)
+    local buttonsTop = SETTINGS_TOP - #CHECKBOXES * CHECKBOX_SPACING - 10
+    panel.soundButton = CreateButton(panel, SETTINGS_WIDTH - 40, "", CycleSound)
+    panel.soundButton:SetPoint("TOPLEFT", 20, buttonsTop)
+    AddTooltip(panel.soundButton, function() return "Lyd", "Klikk for neste lyd. Du hører den med en gang." end)
 
-    frame.pauseButton = UI.CreateButton(frame, 112, "", CycleAlertPause)
-    frame.pauseButton:SetPoint("LEFT", frame.soundButton, "RIGHT", 6, 0)
-    UI.AddTooltip(frame.pauseButton, function()
+    panel.pauseButton = CreateButton(panel, SETTINGS_WIDTH - 40, "", CycleAlertPause)
+    panel.pauseButton:SetPoint("TOPLEFT", panel.soundButton, "BOTTOMLEFT", 0, -6)
+    AddTooltip(panel.pauseButton, function()
         return "Nytt varsel", "Hvor lenge samme navn må vente før det kan varsle på nytt. Andre navn varsler som vanlig."
     end)
 
-    local testButton = UI.CreateButton(frame, 46, "Test", ns.Alert.Test)
-    testButton:SetPoint("LEFT", frame.pauseButton, "RIGHT", 6, 0)
+    local testButton = CreateButton(panel, SETTINGS_WIDTH - 40, "Test varselet", ns.Alert.Test)
+    testButton:SetPoint("TOPLEFT", panel.pauseButton, "BOTTOMLEFT", 0, -6)
+    return panel
+end
 
-    local shareButton = UI.CreateButton(frame, CONTENT_WIDTH - 124 - 112 - 46 - 18, "Del lista", ns.ExportImport.Show)
-    shareButton:SetPoint("LEFT", testButton, "RIGHT", 6, 0)
-    UI.AddTooltip(shareButton, function()
-        return "Del lista", "Eksport og import som tekst, for eksempel til og fra Discord."
-    end)
+local function ToggleSettings()
+    window.settingsPanel:SetShown(not window.settingsPanel:IsShown())
+end
+
+local function CreateBottomArea(frame)
+    local settingsButton = CreateButton(frame, 120, "Innstillinger", ToggleSettings)
+    settingsButton:SetPoint("TOPLEFT", EDGE, BOTTOM_TOP)
+    AddTooltip(settingsButton, function() return "Innstillinger", "Lyd, blink, deling med guilden og mer." end)
 end
 
 local function CreateMainWindow()
-    local frame = UI.CreateWindow(WINDOW_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, "Guild KOS")
+    local frame = CreateShell()
     CreateAddArea(frame)
     CreateStatusArea(frame)
     CreateListArea(frame)
-    CreateOptionsArea(frame)
+    CreateBottomArea(frame)
+    frame.settingsPanel = CreateSettingsPanel(frame)
     frame:SetScript("OnShow", function() UI.Refresh() end)
     return frame
 end
@@ -470,10 +516,11 @@ end
 local function RefreshStatus()
     window.status:SetText(GuildListStatus())
     window.syncStatus:SetText(IsInGuild() and ns.Sync.StatusText() or "")
-    window.guildButton:SetEnabled(ns.Sync.WhyCannotEdit() == nil)
+    window.syncButton:SetEnabled(ns.Sync.WhyCannotEdit() == nil)
     local arePlatesOn = ns.EnemyNameplatesOn()
     window.plateWarning:SetShown(not arePlatesOn)
     window.plateButton:SetShown(not arePlatesOn)
+    UpdateHint(window.nameInput)
 end
 
 local function RefreshList()
@@ -490,19 +537,21 @@ local function RefreshList()
     window.emptyText:SetShown(#entries == 0)
 end
 
-local function RefreshOptions()
-    for _, checkbox in ipairs(window.checkboxes) do
+local function RefreshSettings()
+    window.personalCheck:SetChecked(ns.settings.addToPersonal)
+    local panel = window.settingsPanel
+    for _, checkbox in ipairs(panel.checkboxes) do
         checkbox:SetChecked(ns.settings[checkbox.settingKey])
     end
-    window.soundButton:SetText("Lyd: " .. ns.Alert.SoundByKey(ns.settings.soundKey).label)
-    window.pauseButton:SetText(("Nytt varsel: %d s"):format(ns.settings.alertPause))
+    panel.soundButton:SetText("Lyd: " .. ns.Alert.SoundByKey(ns.settings.soundKey).label)
+    panel.pauseButton:SetText(("Nytt varsel etter %d s"):format(ns.settings.alertPause))
 end
 
 function UI.Refresh()
     if not (window and window:IsShown()) then return end
     RefreshStatus()
     RefreshList()
-    RefreshOptions()
+    RefreshSettings()
 end
 
 function UI.Toggle()

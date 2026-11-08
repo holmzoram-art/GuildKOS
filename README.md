@@ -5,15 +5,25 @@ En addon for WoW Forever. Du legger inn navn, og når en av dem er i nærheten f
 - en lyd (Raid Warning som standard, spilles på Master-kanalen)
 - rødt blink rundt skjermkanten
 - stor tekst øverst på skjermen og en linje i chat
-- et lite «KOS i nærheten»-vindu som viser hvem som er sett det siste minuttet. Trykk «Test» i
-  `/kos`-vinduet for å få det fram, og dra det dit du vil ha det.
+- et lite «KOS i nærheten»-vindu som viser hvem som er sett det siste minuttet. Trykk «Test
+  varselet» under «Innstillinger» for å få det fram, og dra det dit du vil ha det.
 - blinkende ikon på oppgavelinja hvis spillet ligger i bakgrunnen
 
 Første gang addonen lastes, står «Nektarion Stormhoof» på lista di med grunnen «Test», så du kan
 prøve varslene med en gang. Fjern navnet med X-en når du er ferdig; det kommer ikke tilbake.
 
-Hold musa over et navn i lista for å se alt om det: grunn, drap, hvor og når det sist ble sett, og
-hvem som la det til.
+## Vinduet (/kos)
+
+- **Legg til et navn:** skriv `Fornavn Etternavn grunn` i feltet øverst og trykk Enter eller
+  «Legg til». De to første ordene er navnet, resten er grunnen.
+- **Legg til target:** ta spilleren i target og trykk «Legg til target». Det som står i feltet, blir
+  grunnen.
+- Navn havner på **guildlista**. Huk av «Bare på min liste» for å legge dem på din egen liste i stedet.
+- **Synk nå** sender hele guildlista til alle med addonen som er pålogget, og de sender tilbake det du
+  mangler. Det skjer også av seg selv når noen logger på.
+- Hold musa over et navn i lista for å se alt om det: grunn, drap, hvor og når det sist ble sett, og
+  hvem som la det til.
+- **Innstillinger** åpner et panel ved siden av vinduet med lyd, blink, deling med guilden og mer.
 
 ## Navn
 
@@ -23,9 +33,8 @@ alle som heter Nektarion, uansett etternavn. Store og små bokstaver spiller ing
 
 ## Guildlista
 
-Guildlista er felles for alle i guilden som har addonen. Skriv navnet (og gjerne en grunn) i
-`/kos`-vinduet og trykk «Legg til på guildlista». Alle med addonen har hele lista lagret hos seg, og
-addonene holder hverandre oppdatert:
+Guildlista er felles for alle i guilden som har addonen. Alle med addonen har hele lista lagret hos
+seg, og addonene holder hverandre oppdatert:
 
 - Et nytt eller fjernet navn sendes med en gang til alle som er pålogget.
 - Når noen logger på, sammenligner addonen lista med de andre og henter det som mangler. Den som
@@ -38,19 +47,7 @@ addonene holder hverandre oppdatert:
 
 ## Min liste
 
-Din egen liste gjelder alle karakterene dine på kontoen, og addonen sender den aldri til andre. Den er
-likevel med når du bruker «Del lista».
-
-## Del lista som tekst
-
-«Del lista» i vinduet (eller `/kos export`) viser hele lista som tekst, ett navn per linje. Kopier
-den med Ctrl+C og lim den inn på Discord som backup. For å lese en liste inn igjen: lim den inn i
-samme vindu og trykk «Til guildlista» eller «Til min liste».
-
-```
-Nektarion Stormhoof - Gikk alliance
-Sviker Svikersen
-```
+Din egen liste gjelder alle karakterene dine på kontoen, og addonen sender den aldri til andre.
 
 ## Guilden får beskjed
 
@@ -102,14 +99,13 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | Kommando | Hva den gjør |
 |---|---|
 | `/kos` | åpner eller lukker vinduet |
-| `/kos add Fornavn Etternavn grunn` | legger navnet til på din liste |
+| `/kos add Fornavn Etternavn grunn` | legger navnet til på din liste (uten navn: target-en din) |
 | `/kos remove Fornavn Etternavn` | fjerner navnet fra din liste |
-| `/kos guild add Fornavn Etternavn grunn` | legger navnet til på guildlista |
+| `/kos guild add Fornavn Etternavn grunn` | legger navnet til på guildlista (uten navn: target-en din) |
 | `/kos guild remove Fornavn Etternavn` | fjerner navnet fra guildlista |
 | `/kos list` | skriver hele lista i chat, med antall drap |
 | `/kos top` | viser hvem i guilden som har flest KOS-drap |
-| `/kos export` eller `/kos import` | åpner vinduet for å dele lista som tekst |
-| `/kos sync` | sammenligner lista med guilden med en gang |
+| `/kos sync` | sender hele guildlista til alle med addonen (som «Synk nå») |
 | `/kos status` | viser guild, antall navn, siste synk og hvem addonen har hørt fra |
 | `/kos plates` | slår på fiendtlige navneplater |
 | `/kos test` | viser et testvarsel |
