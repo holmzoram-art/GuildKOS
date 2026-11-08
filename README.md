@@ -102,9 +102,9 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | Kommando | Hva den gjør |
 |---|---|
 | `/kos` | åpner eller lukker vinduet |
-| `/kos add Fornavn Etternavn - grunn` | legger navnet til på din liste |
+| `/kos add Fornavn Etternavn grunn` | legger navnet til på din liste |
 | `/kos remove Fornavn Etternavn` | fjerner navnet fra din liste |
-| `/kos guild add Fornavn Etternavn - grunn` | legger navnet til på guildlista |
+| `/kos guild add Fornavn Etternavn grunn` | legger navnet til på guildlista |
 | `/kos guild remove Fornavn Etternavn` | fjerner navnet fra guildlista |
 | `/kos list` | skriver hele lista i chat, med antall drap |
 | `/kos top` | viser hvem i guilden som har flest KOS-drap |

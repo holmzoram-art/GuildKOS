@@ -219,8 +219,9 @@ function ns.IsMe(senderName)
 end
 
 -- "Nektarion Stormhoof - gikk alliance" -> "Nektarion Stormhoof", "gikk alliance". The reason
--- comes after " - ", ":" or " – " (an en dash, 3 bytes in UTF-8); without one, the whole text
--- is the name.
+-- comes after " - ", ":" or " – " (an en dash, 3 bytes in UTF-8). Without one, the first two
+-- words are the name (first and last name) and the rest is the reason, so "Nektarion
+-- Stormhoof gikk alliance" works too; one or two words are the name alone.
 local REASON_SEPARATORS = { "%s+%-+%s*", "%s*:%s*", "%s+\226\128\147%s*" }
 
 function ns.SplitNameAndReason(text)
@@ -229,6 +230,8 @@ function ns.SplitNameAndReason(text)
         local name, reason = trimmed:match("^(.-)" .. separator .. "(.*)$")
         if name then return name, reason end
     end
+    local firstName, lastName, reason = trimmed:match("^(%S+)%s+(%S+)%s+(.+)$")
+    if firstName then return firstName .. " " .. lastName, reason end
     return trimmed, nil
 end
 

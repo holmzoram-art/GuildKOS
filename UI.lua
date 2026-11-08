@@ -158,9 +158,14 @@ local function ClearInputs()
     window.reasonInput:ClearFocus()
 end
 
--- Runs `add(name, reason)` with what is typed in, and says how it went.
+-- Runs `add(name, reason)` with what is typed in, and says how it went. A reason typed into
+-- the name field after the name ("Fuma Xxxx gikk alliance") is used when the reason field is
+-- empty.
 local function AddFromInputs(add, doneText)
-    local shown, problem = add(window.nameInput:GetText(), window.reasonInput:GetText())
+    local fullName, typedReason = ns.SplitNameAndReason(window.nameInput:GetText())
+    local reason = window.reasonInput:GetText()
+    if reason == "" then reason = typedReason end
+    local shown, problem = add(fullName, reason)
     if not shown then
         ns:Print(problem)
         return
