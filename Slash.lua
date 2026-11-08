@@ -1,5 +1,5 @@
 -- The /kos chat commands.
-local _, ns = ...
+local addonName, ns = ...
 
 local HELP_LINES = {
     "/kos: åpne eller lukk vinduet",
@@ -9,6 +9,7 @@ local HELP_LINES = {
     "/kos guild remove Fornavn Etternavn: fjern fra guildlista",
     "/kos export eller /kos import: del lista som tekst",
     "/kos sync: sammenlign lista med guilden nå",
+    "/kos status: guild, lister, synk og hvem addonen hører fra",
     "/kos list: skriv hele lista i chat",
     "/kos top: hvem i guilden har flest KOS-drap",
     "/kos plates: slå på fiendtlige navneplater",
@@ -60,6 +61,61 @@ local function PrintTopKillers()
     end
 end
 
+-- What each kind of addon message is, in /kos status.
+local MESSAGE_KIND_TEXT = {
+    S1 = "sett",
+    K1 = "drap",
+    E1 = "listeendring",
+    H1 = "synk-spørsmål",
+    D1 = "hel liste",
+    D2 = "hel liste",
+}
+local HEARD_SHOWN = 10 -- senders listed in /kos status
+
+local function CountPersonal()
+    local personalCount = 0
+    for _ in pairs(ns.db.personal) do personalCount = personalCount + 1 end
+    return personalCount
+end
+
+local function AddonVersion()
+    local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    return getMetadata and getMetadata(addonName, "Version") or "?"
+end
+
+local function PrintHeardFrom(heard)
+    if #heard == 0 then
+        print("   Ingen meldinger fra andre med addonen ennå. Er de i samme guild, og pålogget?")
+        return
+    end
+    print("   Hørt fra:")
+    for index = 1, math.min(#heard, HEARD_SHOWN) do
+        local sender = heard[index]
+        local kind = MESSAGE_KIND_TEXT[sender.lastKind] or sender.lastKind or "?"
+        print(("      %s: %d meldinger, sist %s %s"):format(Ambiguate(sender.sender, "guild"), sender.count, kind,
+            ns.TimeAgo(sender.lastAt)))
+    end
+end
+
+-- Everything that tells whether the guild list can sync: which guild, how many names, when it
+-- last synced, how this copy's own messages go, and whom it has heard from.
+local function PrintStatus()
+    local guildName = IsInGuild() and ns.Plain(GetGuildInfo("player"))
+    local share = ns.Share.Status()
+    ns:Print(("Status (versjon %s):"):format(AddonVersion()))
+    print("   Guild: " .. (guildName or "ikke i guild (eller ikke lastet ennå)"))
+    if guildName then
+        local listedCount, removedCount = ns.Sync.Counts()
+        print(("   Guildlista: %d navn (%d fjernet). %s"):format(listedCount, removedCount, ns.Sync.StatusText()))
+    end
+    print(("   Min liste: %d navn"):format(CountPersonal()))
+    print(("   Sendt: %d meldinger, siste svar fra spillet: %s. Venter: %d."):format(share.sentCount,
+        share.lastSendAnswer or "ingen ennå", share.waitingCount))
+    if share.isPrefixRegistered == false then print("   |cffff6060Addon-kanalen er ikke registrert.|r") end
+    if share.isLockedDown then print("   Spillet blokkerer addon-meldinger akkurat nå (kamp eller instance).") end
+    PrintHeardFrom(share.heard)
+end
+
 local function PrintHelp()
     ns:Print("Kommandoer:")
     for _, line in ipairs(HELP_LINES) do
@@ -107,6 +163,7 @@ local COMMANDS = {
     export = function() ns.ExportImport.Show() end,
     import = function() ns.ExportImport.Show() end,
     sync = StartSync,
+    status = PrintStatus,
     plates = function() ns.TurnOnEnemyNameplates() end,
     test = function() ns.Alert.Test() end,
     help = PrintHelp,

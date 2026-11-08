@@ -223,6 +223,19 @@ function Sync.StatusText()
     return ("Sist synket med %s %s."):format(lastSync.from, ns.TimeAgo(lastSync.at))
 end
 
+-- For /kos status: names on the guild list, and removed names still remembered.
+function Sync.Counts()
+    local listedCount, removedCount = 0, 0
+    for _, entry in pairs(ns.SyncedEntries() or {}) do
+        if entry.removed then
+            removedCount = removedCount + 1
+        else
+            listedCount = listedCount + 1
+        end
+    end
+    return listedCount, removedCount
+end
+
 local function SendWholeList()
     local entries = ns.SyncedEntries()
     if not entries then return end

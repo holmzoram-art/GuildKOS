@@ -41,6 +41,11 @@ local isSending = false
 local lastReportAt = {}    -- key -> GetTime() the name was last reported: by you, or heard from the guild
 local handlersByKind = {}  -- "S1" -> function(fields, sender)
 
+-- For /kos status: who this copy has heard from, and how its own sending goes.
+local heardFrom = {}       -- sender -> { count, lastAt = GetServerTime(), lastKind = "E1" }
+local sentCount = 0
+local lastSendAnswer       -- the game's answer to our last message: "Success", a throttle, an error
+
 -- Whether the game blocks addon messages right now (boss fights, some instances). Only a
 -- plain true counts; a check that is missing or errors doesn't block anything.
 local LOCKDOWN_CHECKS = { "InChatMessagingLockdown", "AreOutgoingAddonChatMessagesRestricted" }
@@ -56,14 +61,23 @@ function Share.IsChatLockedDown()
     return false
 end
 
--- SendAddonMessage answers with a code from Enum.SendAddonMessageResult; the ones whose
--- name mentions throttling mean "too fast, try again later".
-local function IsThrottled(result)
-    if type(result) ~= "number" or not (Enum and Enum.SendAddonMessageResult) then return false end
-    for name, value in pairs(Enum.SendAddonMessageResult) do
-        if value == result then return name:find("Throttle") ~= nil end
+-- The name of the game's answer to a SendAddonMessage call: a name from
+-- Enum.SendAddonMessageResult ("Success", "AddonMessageThrottle", ...), "Success"/"Failed" on
+-- clients that answer true or false, or "Error" when the call threw.
+local function SendAnswerName(ok, result)
+    if not ok then return "Error" end
+    if type(result) == "boolean" then return result and "Success" or "Failed" end
+    if type(result) == "number" and Enum and Enum.SendAddonMessageResult then
+        for name, value in pairs(Enum.SendAddonMessageResult) do
+            if value == result then return name end
+        end
     end
-    return false
+    return "Success"
+end
+
+-- An answer whose name mentions throttling means "too fast, try again later".
+local function IsThrottled(answerName)
+    return answerName:find("Throttle") ~= nil
 end
 
 local function FirstWaitingOutbox()
@@ -102,10 +116,12 @@ local function SendNext()
         return
     end
     local ok, result = pcall(C_ChatInfo.SendAddonMessage, PREFIX, message.text, "GUILD")
-    if ok and IsThrottled(result) then
+    lastSendAnswer = SendAnswerName(ok, result)
+    if IsThrottled(lastSendAnswer) then
         C_Timer.After(THROTTLE_RETRY, SendNext)
         return
     end
+    sentCount = sentCount + 1
     table.remove(outbox, 1)
     C_Timer.After(SEND_GAP, SendNext)
 end
@@ -241,6 +257,11 @@ ns:On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
     -- Our own messages come back to us too. On WoW Forever the sender reads "First Last".
     if ns.IsMe(sender) then return end
     local fields = SplitFields(text)
+    local heard = heardFrom[sender] or { count = 0 }
+    heard.count = heard.count + 1
+    heard.lastAt = GetServerTime()
+    heard.lastKind = fields[1]
+    heardFrom[sender] = heard
     local handler = handlersByKind[fields[1]]
     if handler then handler(fields, sender) end
 end)
@@ -248,3 +269,24 @@ end)
 ns:On("PLAYER_LOGIN", function()
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end)
+
+-- What /kos status shows about messages:
+-- { heard = { { sender, count, lastAt, lastKind }, ... } (most recent first), sentCount,
+--   lastSendAnswer, waitingCount, isLockedDown, isPrefixRegistered }
+function Share.Status()
+    local heard = {}
+    for sender, record in pairs(heardFrom) do
+        table.insert(heard, { sender = sender, count = record.count, lastAt = record.lastAt, lastKind = record.lastKind })
+    end
+    table.sort(heard, function(first, second) return first.lastAt > second.lastAt end)
+    local isRegistered = C_ChatInfo.IsAddonMessagePrefixRegistered
+        and C_ChatInfo.IsAddonMessagePrefixRegistered(PREFIX)
+    return {
+        heard = heard,
+        sentCount = sentCount,
+        lastSendAnswer = lastSendAnswer,
+        waitingCount = #urgentOutbox + #editOutbox + #listOutbox,
+        isLockedDown = Share.IsChatLockedDown(),
+        isPrefixRegistered = isRegistered,
+    }
+end

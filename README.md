@@ -110,6 +110,7 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | `/kos top` | viser hvem i guilden som har flest KOS-drap |
 | `/kos export` eller `/kos import` | åpner vinduet for å dele lista som tekst |
 | `/kos sync` | sammenligner lista med guilden med en gang |
+| `/kos status` | viser guild, antall navn, siste synk og hvem addonen har hørt fra |
 | `/kos plates` | slår på fiendtlige navneplater |
 | `/kos test` | viser et testvarsel |
 
