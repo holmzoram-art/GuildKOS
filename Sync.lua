@@ -2,7 +2,7 @@
 -- whole list, and the copies keep each other up to date over hidden guild messages:
 --   E1  one entry: name, changedAt, changedBy, removed (1 or 0), reason, addedBy, addedAt.
 --       Sent when someone adds or removes a name, and as part of a whole list (below).
---   H1  a checksum of the sender's list, sent a little while after login
+--   H1  a checksum of the sender's list and its version, sent a little while after login
 --   D1  a whole list follows as E1 messages, and then
 --   D2  the end of that list
 --
@@ -301,7 +301,7 @@ function Sync.SayHello(isRetry)
     helloSentAt = GetTime()
     helloRound = helloRound + 1
     hasSaidHello = true
-    ns.Share.SendNow({ HELLO, ListChecksum(entries) })
+    ns.Share.SendNow({ HELLO, ListChecksum(entries), ns.Version() })
     if not isRetry then
         local round = helloRound
         C_Timer.After(HELLO_RETRY_DELAY, function() AskAgainIfUnfinished(round) end)
@@ -325,7 +325,8 @@ local function AnswerDelay()
     return RandomBetween(ANSWER_DELAY_MIN, latest)
 end
 
-ns.Share.OnMessage(HELLO, function(fields)
+ns.Share.OnMessage(HELLO, function(fields, sender)
+    ns.NoteVersionHeard(fields[3], sender)
     local entries = ns.SyncedEntries()
     if not entries or fields[2] == ListChecksum(entries) then return end
     local helloHeardAt = GetTime()

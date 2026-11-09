@@ -53,6 +53,39 @@ function ns.Version()
     return getMetadata and getMetadata(addonName, "Version") or "?"
 end
 
+local DOWNLOAD_URL = "https://github.com/holmzoram-art/GuildKOS/releases/latest/download/GuildKOS.zip"
+
+-- "1.10.2" -> 1, 10, 2, or nil when it isn't a version.
+local function VersionNumbers(version)
+    local major, minor, patch = tostring(version or ""):match("^(%d+)%.(%d+)%.?(%d*)")
+    if not major then return nil end
+    return tonumber(major), tonumber(minor), tonumber(patch) or 0
+end
+
+local function IsNewerVersion(version, than)
+    local major, minor, patch = VersionNumbers(version)
+    local thanMajor, thanMinor, thanPatch = VersionNumbers(than)
+    if not (major and thanMajor) then return false end
+    if major ~= thanMajor then return major > thanMajor end
+    if minor ~= thanMinor then return minor > thanMinor end
+    return patch > thanPatch
+end
+
+local toldNewerVersion -- the newest version this session has told the player about
+
+-- Another guild member's copy said which version it runs (Sync.lua, Share.lua). When it is
+-- newer than this one, the player hears it once, with where to get it.
+function ns.NoteVersionHeard(heardVersion, sender)
+    if not IsNewerVersion(heardVersion, ns.Version()) then return end
+    if toldNewerVersion and not IsNewerVersion(heardVersion, toldNewerVersion) then return end
+    -- Rebuilt from its numbers, so text from another player's game is never printed as is.
+    local version = ("%d.%d.%d"):format(VersionNumbers(heardVersion))
+    toldNewerVersion = version
+    ns:Print(("%s har en nyere versjon av GuildKOS (%s, du har %s). Dobbeltklikk Oppdater-GuildKOS.bat "
+        .. "i AddOns-mappa, eller last ned fra %s"):format(Ambiguate(sender, "guild"), version, ns.Version(),
+        DOWNLOAD_URL))
+end
+
 -- "for 5 min siden": how long ago a GetServerTime() moment was.
 function ns.TimeAgo(serverTime)
     local seconds = math.max(0, GetServerTime() - (serverTime or 0))

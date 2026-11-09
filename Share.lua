@@ -270,12 +270,14 @@ function Share.Ping()
 end
 
 Share.OnMessage(PING, function(fields, sender)
+    ns.NoteVersionHeard(fields[2], sender)
     ns:Print(("Ping fra %s (versjon %s). Addonen din svarer."):format(Ambiguate(sender, "guild"),
         Share.CleanText(fields[2])))
     Share.SendNow({ PONG, ns.Version() })
 end)
 
 Share.OnMessage(PONG, function(fields, sender)
+    ns.NoteVersionHeard(fields[2], sender)
     if pingAnswers then pingAnswers[Ambiguate(sender, "guild")] = Share.CleanText(fields[2]) end
 end)
 
