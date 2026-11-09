@@ -1,5 +1,5 @@
 -- The /kos chat commands.
-local addonName, ns = ...
+local _, ns = ...
 
 local HELP_LINES = {
     "/kos: åpne eller lukk vinduet",
@@ -9,6 +9,7 @@ local HELP_LINES = {
     "/kos guild remove Fornavn Etternavn: fjern fra guildlista",
     "/kos sync: send hele guildlista til alle med addonen nå",
     "/kos status: guild, lister, synk og hvem addonen hører fra",
+    "/kos ping: test om addon-meldinger kommer fram, begge veier",
     "/kos list: skriv hele lista i chat",
     "/kos top: hvem i guilden har flest KOS-drap",
     "/kos plates: slå på fiendtlige navneplater",
@@ -77,11 +78,6 @@ local function CountPersonal()
     return personalCount
 end
 
-local function AddonVersion()
-    local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
-    return getMetadata and getMetadata(addonName, "Version") or "?"
-end
-
 local function PrintHeardFrom(heard)
     if #heard == 0 then
         print("   Ingen meldinger fra andre med addonen ennå. Er de i samme guild, og pålogget?")
@@ -101,7 +97,7 @@ end
 local function PrintStatus()
     local guildName = IsInGuild() and ns.Plain(GetGuildInfo("player"))
     local share = ns.Share.Status()
-    ns:Print(("Status (versjon %s):"):format(AddonVersion()))
+    ns:Print(("Status (versjon %s):"):format(ns.Version()))
     print("   Guild: " .. (guildName or "ikke i guild (eller ikke lastet ennå)"))
     if guildName then
         local listedCount, removedCount = ns.Sync.Counts()
@@ -114,6 +110,30 @@ local function PrintStatus()
     if share.isLockedDown then print("   Spillet blokkerer addon-meldinger akkurat nå (kamp eller instance).") end
     PrintHeardFrom(share.heard)
 end
+
+local function Ping()
+    if not ns.Share.Ping() then
+        ns:Print("Du er ikke med i en guild.")
+        return
+    end
+    ns:Print("Sender ping til guilden. Svarene kommer om 10 sekunder.")
+end
+
+-- The ping's answers: who has the addon and got your message, and the version they run.
+ns:On("KOS_PING_DONE", function(answers)
+    local names = {}
+    for name, version in pairs(answers) do
+        table.insert(names, ("%s (%s)"):format(name, version ~= "" and version or "?"))
+    end
+    table.sort(names)
+    if #names > 0 then
+        ns:Print(("Svar fra %d: %s"):format(#names, table.concat(names, ", ")))
+        return
+    end
+    local share = ns.Share.Status()
+    ns:Print(("Ingen svar. Siste svar fra spillet da pingen ble sendt: %s."):format(share.lastSendAnswer or "ingen"))
+    print("   Er noen andre med addonen pålogget, i samme guild, og med versjon 1.10.1 eller nyere?")
+end)
 
 local function PrintHelp()
     ns:Print("Kommandoer:")
@@ -180,6 +200,7 @@ local COMMANDS = {
     top = PrintTopKillers,
     sync = SyncNow,
     status = PrintStatus,
+    ping = Ping,
     plates = function() ns.TurnOnEnemyNameplates() end,
     test = function() ns.Alert.Test() end,
     help = PrintHelp,

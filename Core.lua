@@ -47,6 +47,12 @@ function ns:Print(...)
     print(CHAT_PREFIX, ...)
 end
 
+-- The version in GuildKOS.toc, for /kos status and /kos ping.
+function ns.Version()
+    local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    return getMetadata and getMetadata(addonName, "Version") or "?"
+end
+
 -- "for 5 min siden": how long ago a GetServerTime() moment was.
 function ns.TimeAgo(serverTime)
     local seconds = math.max(0, GetServerTime() - (serverTime or 0))

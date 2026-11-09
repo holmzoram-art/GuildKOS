@@ -20,6 +20,9 @@ ns.Share = Share
 local PREFIX = "GuildKOS"
 local SIGHTING = "S1"
 local KILL = "K1"
+local PING = "P1"   -- /kos ping: every copy that hears it answers with PONG
+local PONG = "P2"
+local PING_WAIT = 10 -- seconds a ping waits for answers
 local FIELD_SEPARATOR = "\t"
 local SEND_GAP = 1           -- seconds between messages
 local LOCKDOWN_RETRY = 5     -- seconds before trying again while the game blocks addon messages
@@ -244,6 +247,36 @@ Share.OnMessage(SIGHTING, function(fields, sender)
     if wasReported or not ns.settings.showGuildReports then return end
     local shown = ns.ShownName(entry, Share.CleanText(fields[4]))
     ns:Print(("|cffff5050%s|r sett av %s: %s"):format(shown, reporter, place ~= "" and place or "?"))
+end)
+
+--------------------------------------------------------------------------------
+-- /kos ping: tests both ways at once. The one who pings sees who answered; everyone else
+-- sees who pinged. Copies older than the ping don't answer.
+--------------------------------------------------------------------------------
+
+local pingAnswers -- while a ping waits: { "Name" -> their version }
+
+-- Returns false outside a guild. When PING_WAIT is over, KOS_PING_DONE fires with the answers.
+function Share.Ping()
+    if not IsInGuild() then return false end
+    pingAnswers = {}
+    Share.SendNow({ PING, ns.Version() })
+    C_Timer.After(PING_WAIT, function()
+        local answers = pingAnswers
+        pingAnswers = nil
+        ns:Fire("KOS_PING_DONE", answers)
+    end)
+    return true
+end
+
+Share.OnMessage(PING, function(fields, sender)
+    ns:Print(("Ping fra %s (versjon %s). Addonen din svarer."):format(Ambiguate(sender, "guild"),
+        Share.CleanText(fields[2])))
+    Share.SendNow({ PONG, ns.Version() })
+end)
+
+Share.OnMessage(PONG, function(fields, sender)
+    if pingAnswers then pingAnswers[Ambiguate(sender, "guild")] = Share.CleanText(fields[2]) end
 end)
 
 Share.OnMessage(KILL, function(fields)

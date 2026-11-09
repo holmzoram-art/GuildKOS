@@ -122,6 +122,7 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | `/kos top` | viser hvem i guilden som har flest KOS-drap |
 | `/kos sync` | sender hele guildlista til alle med addonen (som «Synk nå») |
 | `/kos status` | viser guild, antall navn, siste synk og hvem addonen har hørt fra |
+| `/kos ping` | tester om addon-meldinger kommer fram begge veier: alle med addonen svarer |
 | `/kos plates` | slår på fiendtlige navneplater |
 | `/kos test` | viser et testvarsel |
 
