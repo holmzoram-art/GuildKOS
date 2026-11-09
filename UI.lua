@@ -26,7 +26,7 @@ local SETTINGS_TOP = -48
 local CHECKBOX_SPACING = 24
 local ALERT_PAUSES = { 30, 60, 120, 300 } -- seconds, the choices behind the "Nytt varsel" button
 local REMOVE_POPUP = "GUILDKOS_REMOVE_FROM_GUILD_LIST"
-local NAME_HINT = "Fornavn Etternavn grunn"
+local NAME_HINT = "Fornavn Etternavn grunn, eller <Guild> grunn"
 
 local GUILD_TAG = "|cff40ff40Guild|r"
 local PERSONAL_TAG = "|cff66b3ffMin|r"
@@ -154,6 +154,20 @@ local function AddTarget()
         return
     end
     if AddName(fullName, window.nameInput:GetText()) then ClearInput() end
+end
+
+-- Adds your target's whole guild. Whatever is typed in the field becomes the reason.
+local function AddTargetGuild()
+    if not ns.TargetFullName() then
+        ns:Print("Ta en spiller fra guilden i target først.")
+        return
+    end
+    local guildName = ns.Plain(GetGuildInfo("target"))
+    if type(guildName) ~= "string" or guildName == "" then
+        ns:Print("Target-en din er ikke med i en guild.")
+        return
+    end
+    if AddName("<" .. guildName .. ">", window.nameInput:GetText()) then ClearInput() end
 end
 
 local function ReportRemoval(shown, problem)
@@ -365,11 +379,18 @@ local function CreateAddArea(frame)
     })
     frame.personalCheck:SetPoint("TOPLEFT", EDGE, ADD_TOP - 26)
 
-    local targetButton = CreateButton(frame, 130, "Legg til target", AddTarget)
+    local targetButton = CreateButton(frame, 112, "Legg til target", AddTarget)
     targetButton:SetPoint("TOPRIGHT", -EDGE, ADD_TOP - 27)
     AddTooltip(targetButton, function()
         return "Legg til target", "Legger spilleren du har i target på lista. Det du har skrevet i feltet, "
             .. "blir grunnen."
+    end)
+
+    local guildButton = CreateButton(frame, 112, "Legg til guild", AddTargetGuild)
+    guildButton:SetPoint("RIGHT", targetButton, "LEFT", -6, 0)
+    AddTooltip(guildButton, function()
+        return "Legg til guild", "Legger hele guilden til spilleren du har i target på lista. Alle i den "
+            .. "guilden varsler da. Du kan også skrive <Guildnavn> i feltet."
     end)
 end
 
@@ -418,7 +439,7 @@ local function CreateListArea(frame)
     scroll:SetScrollChild(frame.listContent)
 
     frame.emptyText = CreateText(listBox, "GameFontDisable",
-        "Lista er tom.\n\nSkriv et navn øverst, eller ta noen i target\nog trykk «Legg til target».")
+        "Lista er tom.\n\nSkriv et navn eller <Guild> øverst, eller ta noen\ni target og trykk «Legg til target» eller «Legg til guild».")
     frame.emptyText:SetPoint("CENTER")
     frame.emptyText:SetWidth(LIST_WIDTH)
 end

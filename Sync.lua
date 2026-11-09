@@ -113,17 +113,18 @@ local function ReadTime(text)
     return value
 end
 
--- The key and entry an E1 message carries, or nil when it is broken.
+-- The key and entry an E1 message carries, or nil when it is broken. The name is a character
+-- ("First Last") or a whole guild ("<Guild>").
 local function DecodeEntry(fields)
-    local firstName, lastName = ns.SplitName(fields[2])
+    local key, shown = ns.ParseListName(fields[2])
     local changedAt = ReadTime(fields[3])
     local changedBy = ns.Share.CleanText(fields[4])
-    if not ns.IsValidFullName(firstName, lastName) or not changedAt or changedBy == "" then
+    if not key or not changedAt or changedBy == "" then
         return nil
     end
     local addedBy = ns.Share.CleanText(fields[7])
-    return ns.NameKey(firstName, lastName), {
-        name = ns.DisplayName(firstName, lastName),
+    return key, {
+        name = shown,
         changedAt = changedAt,
         changedBy = changedBy,
         removed = fields[5] == "1",
@@ -165,15 +166,14 @@ end
 
 -- Returns the name as shown, or nil and why not.
 function Sync.Add(fullName, reason)
-    local firstName, lastName = ns.SplitName(fullName)
-    if not ns.IsValidFullName(firstName, lastName) then return nil, ns.INVALID_NAME end
+    local key, shown = ns.ParseListName(fullName)
+    if not key then return nil, ns.INVALID_NAME end
     local problem = Sync.WhyCannotEdit()
     if problem then return nil, problem end
-    local key = ns.NameKey(firstName, lastName)
     local previous = ns.SyncedEntries()[key]
     local listed = previous and not previous.removed and previous or nil
     local entry = {
-        name = ns.DisplayName(firstName, lastName),
+        name = shown,
         reason = ns.CleanReason(reason) or (listed and listed.reason),
         addedBy = listed and listed.addedBy or ns.MyFullName(),
         addedAt = listed and listed.addedAt or GetServerTime(),

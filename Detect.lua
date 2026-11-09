@@ -28,11 +28,30 @@ local CHAT_SOURCES = {
     CHAT_MSG_TEXT_EMOTE = "emote",
 }
 
--- Every sighting comes through here. Returns the entry when the name is listed. "Last seen"
--- is noted at most every SEEN_NOTE_INTERVAL seconds. The alert, and telling the guild, waits
--- alertPause seconds between two for the same name, so someone running in and out of
--- nameplate range doesn't set it off again and again. A sighting that comes with a first name
--- only (a chat sender can) matches a name saved with its last name too.
+-- What happens when a listed character is seen. "Last seen" is noted at most every
+-- SEEN_NOTE_INTERVAL seconds. The alert, and telling the guild, waits alertPause seconds
+-- between two for the same entry, so someone running in and out of nameplate range doesn't
+-- set it off again and again. For a guild on a list, the entry is the guild (see
+-- ns.GuildMemberEntry), so a whole guild running past gives one alert.
+local function ReactToSighting(entry, howSeen)
+    ns.Nearby.Note(entry, howSeen)
+    local now = GetTime()
+    local place = ns.CurrentPlace()
+    if not lastNotedAt[entry.key] or now - lastNotedAt[entry.key] >= SEEN_NOTE_INTERVAL then
+        lastNotedAt[entry.key] = now
+        ns.NoteLastSeen(entry.key, place, nil)
+    end
+    if lastAlertAt[entry.key] and now - lastAlertAt[entry.key] < ns.settings.alertPause then return end
+    lastAlertAt[entry.key] = now
+    ns.Alert.Show(entry, howSeen)
+    -- The name goes as it stands on the list, so every copy finds the same entry. Names that
+    -- are only on your own list are never shared.
+    local shouldShare = entry.inGuildList and ns.settings.shareSightings
+    ns.Share.ReportOwnSighting(entry.key, entry.listName or entry.name, place, shouldShare, entry.playerName)
+end
+
+-- A sighting by name. Returns the entry when the name is listed. A sighting that comes with a
+-- first name only (a chat sender can) matches a name saved with its last name too.
 local function HandleSighting(firstName, lastName, howSeen)
     if not ns.db then return nil end
     local entry
@@ -42,35 +61,32 @@ local function HandleSighting(firstName, lastName, howSeen)
         entry = ns.FindEntryByFirstName(firstName)
     end
     if not entry then return nil end
-    ns.Nearby.Note(entry, howSeen)
-    local now = GetTime()
-    local place = ns.CurrentPlace()
-    if not lastNotedAt[entry.key] or now - lastNotedAt[entry.key] >= SEEN_NOTE_INTERVAL then
-        lastNotedAt[entry.key] = now
-        ns.NoteLastSeen(entry.key, place, nil)
-    end
-    if lastAlertAt[entry.key] and now - lastAlertAt[entry.key] < ns.settings.alertPause then return entry end
-    lastAlertAt[entry.key] = now
-    ns.Alert.Show(entry, howSeen)
-    -- The name goes as it stands on the list, so every copy finds the same entry. Names that
-    -- are only on your own list are never shared.
-    local shouldShare = entry.inGuildList and ns.settings.shareSightings
-    ns.Share.ReportOwnSighting(entry.key, entry.name, place, shouldShare)
+    ReactToSighting(entry, howSeen)
+    return entry
+end
+
+-- A player whose name isn't listed may be in a guild that is. The game only gives the guild
+-- of a unit it has (target, nameplate, ...), so chat sightings can't use this.
+local function HandleGuildSighting(unit, fullName, howSeen)
+    local guildEntry = ns.FindGuildEntry(ns.Plain(GetGuildInfo(unit)))
+    if not guildEntry then return nil end
+    local entry = ns.GuildMemberEntry(guildEntry, fullName)
+    ReactToSighting(entry, howSeen)
     return entry
 end
 
 -- On WoW Forever, UnitName gives the first and the last name (see Core.lua).
 local function CheckUnit(unit, howSeen)
-    if not ns.Plain(UnitIsPlayer(unit)) then return nil end
+    if not ns.db or not ns.Plain(UnitIsPlayer(unit)) then return nil end
     local fullName = ns.FullNameOfUnit(unit)
     if not fullName then return nil end
     local firstName, lastName = ns.SplitName(fullName)
-    return HandleSighting(firstName, lastName, howSeen)
+    return HandleSighting(firstName, lastName, howSeen) or HandleGuildSighting(unit, fullName, howSeen)
 end
 
 local function CheckNameplate(unit)
     local entry = CheckUnit(unit, "nameplate")
-    if entry then ns.Nearby.SetPlate(unit, entry.key) end
+    if entry then ns.Nearby.SetPlate(unit, entry.nearbyKey or entry.key) end
 end
 
 -- Looks at every nameplate on screen now. The unit names are tried directly, since the field

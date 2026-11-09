@@ -9,7 +9,8 @@ local LAST_SEEN_KEEP_DAYS = 14 -- "last seen" notes older than this are forgotte
 local MAX_NAME_BYTES = 48      -- a name is at most 12 letters, and a letter is up to 4 bytes in UTF-8
 local MAX_REASON_BYTES = 80    -- keeps a shared entry inside one 255-byte addon message
 
-ns.INVALID_NAME = "Ugyldig navn. Skriv fornavn og etternavn, for eksempel «Nektarion Stormhoof»."
+ns.INVALID_NAME = "Ugyldig navn. Skriv fornavn og etternavn, for eksempel «Nektarion Stormhoof», "
+    .. "eller en hel guild som «<Guildnavn>»."
 
 -- How a sighting happened, as shown in alerts and chat.
 ns.HOW_SEEN_TEXT = {
@@ -186,15 +187,41 @@ function ns.NameKey(firstName, lastName)
     return LowerText(firstName) .. " " .. LowerText(lastName)
 end
 
-function ns.KeyFromFullName(fullName)
-    return ns.NameKey(ns.SplitName(fullName))
-end
-
 -- How a name is shown and saved: "nektarion stormhoof" becomes "Nektarion Stormhoof".
 function ns.DisplayName(firstName, lastName)
     local shown = UpperFirstLetter(LowerText(firstName))
     if not lastName or lastName == "" then return shown end
     return shown .. " " .. UpperFirstLetter(LowerText(lastName))
+end
+
+-- A whole guild on a list is written "<Guild Name>". The brackets keep its key apart from any
+-- character's (no name has "<"), and Detect.lua checks the guild of every player it sees.
+local MAX_GUILD_NAME_BYTES = 72 -- a guild name is at most 24 letters, up to 3 bytes each in UTF-8
+
+function ns.GuildEntryKey(guildName)
+    return "<" .. LowerText(guildName) .. ">"
+end
+
+-- The guild name inside "<Guild Name>", or nil when `text` isn't written that way.
+local function GuildNameIn(text)
+    local guildName = (text or ""):match("^%s*<%s*(.-)%s*>%s*$")
+    if not guildName or guildName == "" or #guildName > MAX_GUILD_NAME_BYTES then return nil end
+    if guildName:find("[<>|\t%c]") then return nil end
+    return guildName
+end
+
+-- The key and the shown name for something on a list: a character ("Fornavn Etternavn") or
+-- a guild ("<Guildnavn>"). Nil when it is neither.
+function ns.ParseListName(text)
+    local guildName = GuildNameIn(text)
+    if guildName then return ns.GuildEntryKey(guildName), "<" .. guildName .. ">" end
+    local firstName, lastName = ns.SplitName(text)
+    if not ns.IsValidFullName(firstName, lastName) then return nil end
+    return ns.NameKey(firstName, lastName), ns.DisplayName(firstName, lastName)
+end
+
+function ns.KeyFromFullName(fullName)
+    return ns.ParseListName(fullName) or ns.NameKey(ns.SplitName(fullName))
 end
 
 -- A unit's name as "First Last", or nil when the game keeps it secret or doesn't know it.
@@ -233,6 +260,12 @@ local REASON_SEPARATORS = { "%s+%-+%s*", "%s*:%s*", "%s+\226\128\147%s*" }
 
 function ns.SplitNameAndReason(text)
     local trimmed = (text or ""):match("^%s*(.-)%s*$")
+    -- "<Guild Name> grunn": the guild is everything up to ">".
+    local guildPart, afterGuild = trimmed:match("^(<[^>]*>)%s*(.-)$")
+    if guildPart then
+        local reason = afterGuild:gsub("^[%-:]+%s*", "")
+        return guildPart, reason ~= "" and reason or nil
+    end
     for _, separator in ipairs(REASON_SEPARATORS) do
         local name, reason = trimmed:match("^(.-)" .. separator .. "(.*)$")
         if name then return name, reason end
@@ -305,6 +338,48 @@ function ns.FindEntryByFirstName(firstName)
     return nil
 end
 
+-- The entry for a name as a message or the player writes it: "<Guild>" or "First Last".
+function ns.FindListEntry(text)
+    local guildName = GuildNameIn(text)
+    if guildName then return ns.EntryFor(ns.GuildEntryKey(guildName)) end
+    local firstName, lastName = ns.SplitName(text)
+    if not ns.IsValidFullName(firstName, lastName) then return nil end
+    return ns.FindEntry(firstName, lastName)
+end
+
+-- The guild entry for a guild name the game gave (GetGuildInfo), or nil.
+function ns.FindGuildEntry(guildName)
+    if type(guildName) ~= "string" or guildName == "" then return nil end
+    return ns.EntryFor(ns.GuildEntryKey(guildName))
+end
+
+-- How an entry is shown for one sighting or kill: "Fuma Xxxx <Stormwind Elite>" for a member
+-- of a listed guild (`playerName` given), else the entry's own name.
+function ns.ShownName(entry, playerName)
+    if playerName and playerName ~= "" and entry.key:sub(1, 1) == "<" then
+        return playerName .. " " .. entry.name
+    end
+    return entry.name
+end
+
+-- A character seen or killed because their guild is on a list. It shows their own name and
+-- the guild's, and is reported by the guild's entry: `key` (the guild) is what "last seen",
+-- the alert pause, kill counts and guild reports go by, so a whole guild running past gives
+-- one alert, while `nearbyKey` (the character) gives each of them a row in the nearby window.
+function ns.GuildMemberEntry(guildEntry, playerFullName)
+    return {
+        key = guildEntry.key,
+        nearbyKey = ns.KeyFromFullName(playerFullName),
+        name = playerFullName .. " " .. guildEntry.name,
+        listName = guildEntry.name,
+        countName = guildEntry.name,
+        playerName = playerFullName,
+        reason = guildEntry.reason or ("Medlem av " .. guildEntry.name),
+        inGuildList = guildEntry.inGuildList,
+        inPersonalList = guildEntry.inPersonalList,
+    }
+end
+
 -- Every entry on either list, sorted by name.
 function ns.AllEntries()
     local entries = {}
@@ -347,10 +422,9 @@ end
 
 -- Adds a name to your own list. Returns the name as shown, or nil and why not.
 function ns.AddPersonal(fullName, reason)
-    local firstName, lastName = ns.SplitName(fullName)
-    if not ns.IsValidFullName(firstName, lastName) then return nil, ns.INVALID_NAME end
-    local shown = ns.DisplayName(firstName, lastName)
-    ns.db.personal[ns.NameKey(firstName, lastName)] = {
+    local key, shown = ns.ParseListName(fullName)
+    if not key then return nil, ns.INVALID_NAME end
+    ns.db.personal[key] = {
         name = shown,
         reason = ns.CleanReason(reason),
         added = GetServerTime(),

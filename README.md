@@ -18,6 +18,8 @@ prøve varslene med en gang. Fjern navnet med X-en når du er ferdig; det kommer
   «Legg til». De to første ordene er navnet, resten er grunnen.
 - **Legg til target:** ta spilleren i target og trykk «Legg til target». Det som står i feltet, blir
   grunnen.
+- **Legg til guild:** ta et medlem av guilden i target og trykk «Legg til guild», eller skriv
+  `<Guildnavn> grunn` i feltet. Se «Hele guilds» under.
 - Navn havner på **guildlista**. Huk av «Bare på min liste» for å legge dem på din egen liste i stedet.
 - **Synk nå** sender hele guildlista til alle med addonen som er pålogget, og de sender tilbake det du
   mangler. Det skjer også av seg selv når noen logger på.
@@ -30,6 +32,18 @@ prøve varslene med en gang. Fjern navnet med X-en når du er ferdig; det kommer
 I WoW Forever har alle karakterer fornavn og etternavn. Skriv begge, for eksempel
 «Nektarion Stormhoof». Fornavn alene er ikke unikt: skriver du bare «Nektarion», varsler addonen på
 alle som heter Nektarion, uansett etternavn. Store og små bokstaver spiller ingen rolle.
+
+## Hele guilds
+
+En hel guild skrives med <> rundt, for eksempel `<Stormwind Elite>`. Da varsler addonen på alle i den
+guilden:
+
+- Varselet viser hvem det er: «KOS: Fuma Xxxx <Stormwind Elite> er i nærheten!».
+- Ingen spam: det kommer ett varsel per guild per «Nytt varsel»-tid, selv om mange fra guilden løper
+  forbi. «KOS i nærheten»-vinduet viser likevel hver enkelt.
+- Drap på medlemmer telles på guilden («<Stormwind Elite> er tatt 5 ganger»).
+- Spillet viser guilden bare for spillere addonen har foran seg (navneplate, target, musepeker, focus).
+  I /say og /yell vises ikke guilden, så der varsler addonen bare på navn.
 
 ## Guildlista
 
@@ -103,6 +117,7 @@ dårligere eller ikke i det hele tatt. I åpen verden ser addonen navnene også 
 | `/kos remove Fornavn Etternavn` | fjerner navnet fra din liste |
 | `/kos guild add Fornavn Etternavn grunn` | legger navnet til på guildlista (uten navn: target-en din) |
 | `/kos guild remove Fornavn Etternavn` | fjerner navnet fra guildlista |
+| `/kos guild add <Guildnavn> grunn` | legger en hel guild på guildlista (virker også med `/kos add`) |
 | `/kos list` | skriver hele lista i chat, med antall drap |
 | `/kos top` | viser hvem i guilden som har flest KOS-drap |
 | `/kos sync` | sender hele guildlista til alle med addonen (som «Synk nå») |

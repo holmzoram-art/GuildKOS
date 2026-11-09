@@ -136,7 +136,7 @@ local function FillRow(row, sighting, now)
     end
     local howSeen = ns.HOW_SEEN_TEXT[sighting.howSeen] or sighting.howSeen
     row.name:SetText(("|cffff5050%s|r |cff999999%s|r"):format(sighting.entry.name, howSeen))
-    if IsOnNameplate(sighting.entry.key) then
+    if IsOnNameplate(sighting.entry.nearbyKey or sighting.entry.key) then
         row.age:SetText("|cffff5050nå|r")
     else
         row.age:SetText(("%d s"):format(now - sighting.seenAt))
@@ -159,15 +159,16 @@ function Nearby.Refresh()
     window:Show()
 end
 
+-- Each character gets a row, also when several match one guild on a list (entry.nearbyKey).
 function Nearby.Note(entry, howSeen)
-    sightingsByKey[entry.key] = { entry = entry, howSeen = howSeen, seenAt = GetTime() }
+    sightingsByKey[entry.nearbyKey or entry.key] = { entry = entry, howSeen = howSeen, seenAt = GetTime() }
     Nearby.Refresh()
 end
 
--- A name taken off the lists leaves the window too.
+-- A name (or guild) taken off the lists leaves the window too.
 ns:On("KOS_LIST_CHANGED", function()
-    for key in pairs(sightingsByKey) do
-        if not ns.EntryFor(key) then sightingsByKey[key] = nil end
+    for key, sighting in pairs(sightingsByKey) do
+        if not ns.EntryFor(sighting.entry.key) then sightingsByKey[key] = nil end
     end
     Nearby.Refresh()
 end)

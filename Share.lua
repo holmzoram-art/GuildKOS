@@ -192,10 +192,8 @@ local function SplitFields(text)
 end
 
 -- The guild-list entry a message names, or nil when the name isn't on our guild list.
-local function GuildEntryFor(fullName)
-    local firstName, lastName = ns.SplitName(fullName)
-    if not ns.IsValidFullName(firstName, lastName) then return nil end
-    local entry = ns.FindEntry(firstName, lastName)
+local function GuildEntryFor(listName)
+    local entry = ns.FindListEntry(listName)
     if not (entry and entry.inGuildList) then return nil end
     return entry
 end
@@ -213,22 +211,25 @@ end
 -- Your own alert for a listed name. Tells the guild when `shouldShare` is set and the guild
 -- hasn't heard about the name lately, and keeps the guild's reports of it quiet for a while,
 -- since you know already. Names go as "First Last" (or just "First").
-function Share.ReportOwnSighting(key, fullName, place, shouldShare)
+-- `listName` is the name as it stands on the list ("First Last" or "<Guild>"); for a member
+-- of a listed guild, `playerName` is who it was, so the guild sees that too.
+function Share.ReportOwnSighting(key, listName, place, shouldShare, playerName)
     local wasReported = WasReportedRecently(key)
     lastReportAt[key] = GetTime()
     if not shouldShare or wasReported then return end
-    Share.SendNow({ SIGHTING, fullName, (place or ""):sub(1, MAX_PLACE_BYTES) })
+    Share.SendNow({ SIGHTING, listName, (place or ""):sub(1, MAX_PLACE_BYTES), playerName or "" })
 end
 
-function Share.AnnounceKill(victimFullName, killerName, place, count, killerCount, isPostedInChat)
+function Share.AnnounceKill(listName, killerName, place, count, killerCount, isPostedInChat, playerName)
     Share.SendFirst({
         KILL,
-        victimFullName,
+        listName,
         killerName,
         (place or ""):sub(1, MAX_PLACE_BYTES),
         tostring(count),
         tostring(killerCount or 0),
         isPostedInChat and "1" or "0",
+        playerName or "",
     })
 end
 
@@ -241,14 +242,16 @@ Share.OnMessage(SIGHTING, function(fields, sender)
     local wasReported = WasReportedRecently(entry.key)
     lastReportAt[entry.key] = GetTime()
     if wasReported or not ns.settings.showGuildReports then return end
-    ns:Print(("|cffff5050%s|r sett av %s: %s"):format(entry.name, reporter, place ~= "" and place or "?"))
+    local shown = ns.ShownName(entry, Share.CleanText(fields[4]))
+    ns:Print(("|cffff5050%s|r sett av %s: %s"):format(shown, reporter, place ~= "" and place or "?"))
 end)
 
 Share.OnMessage(KILL, function(fields)
     local entry = GuildEntryFor(fields[2])
     local killerName = Share.CleanText(fields[3])
     if not entry or not ns.IsValidFullName(ns.SplitName(killerName)) then return end
-    ns.Kills.TakeReport(entry, killerName, Share.CleanText(fields[4]), fields[5], fields[6], fields[7] == "1")
+    ns.Kills.TakeReport(entry, killerName, Share.CleanText(fields[4]), fields[5], fields[6], fields[7] == "1",
+        Share.CleanText(fields[8]))
 end)
 
 ns:On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
